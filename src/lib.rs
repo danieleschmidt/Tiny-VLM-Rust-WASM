@@ -7,6 +7,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+pub mod data;
 pub mod error;
 pub mod memory;
 pub mod models;
@@ -24,6 +25,7 @@ pub use memory::{MemoryPool, Tensor, TensorShape};
 /// Re-export commonly used types
 pub mod prelude {
     pub use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError};
+    pub use crate::data::{DataLoader, DataSample, VisionLanguageDataset, DatasetConfig};
     pub use crate::memory::{MemoryPool, Tensor, TensorShape};
     pub use crate::text::{Tokenizer, TokenizerConfig};
     pub use crate::vision::{ImageProcessor, VisionEncoder};

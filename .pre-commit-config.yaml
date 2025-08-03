@@ -1,0 +1,72 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-audit
+        name: cargo audit
+        entry: cargo audit
+        language: system
+        files: Cargo\.(toml|lock)
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: mixed-line-ending
+
+  - repo: https://github.com/psf/black
+    rev: 23.11.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/eslint/eslint
+    rev: v8.54.0
+    hooks:
+      - id: eslint
+        files: \.(js|ts)$
+        types: [file]
+        additional_dependencies:
+          - eslint@8.54.0
+          - '@typescript-eslint/parser@6.12.0'
+          - '@typescript-eslint/eslint-plugin@6.12.0'
+
+  - repo: https://github.com/prettier/prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        files: \.(js|ts|json|yaml|yml|md|html|css)$
