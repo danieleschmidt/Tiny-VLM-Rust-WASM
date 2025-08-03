@@ -1,0 +1,125 @@
+{
+  "name": "tiny-vlm-rust-wasm",
+  "version": "0.1.0",
+  "description": "Ultra-efficient Vision-Language Model implementation in Rust with WebAssembly support",
+  "keywords": ["machine-learning", "computer-vision", "nlp", "webassembly", "rust", "ai"],
+  "author": "Tiny-VLM Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/Tiny-VLM-Rust-WASM.git"
+  },
+  "homepage": "https://github.com/yourusername/Tiny-VLM-Rust-WASM",
+  "bugs": {
+    "url": "https://github.com/yourusername/Tiny-VLM-Rust-WASM/issues"
+  },
+  "main": "pkg/tiny_vlm.js",
+  "types": "pkg/tiny_vlm.d.ts",
+  "files": [
+    "pkg/**/*",
+    "examples/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "npm run build:wasm && npm run build:web",
+    "build:wasm": "wasm-pack build --target web --features simd --release",
+    "build:web": "webpack --mode production",
+    "build:dev": "wasm-pack build --target web --features simd --dev",
+    "dev": "webpack serve --mode development --open",
+    "test": "npm run test:wasm && npm run test:web",
+    "test:wasm": "wasm-pack test --node",
+    "test:web": "jest",
+    "bench": "npm run bench:wasm && npm run bench:web",
+    "bench:wasm": "wasm-pack build --target web --features simd --release && node benchmarks/wasm-bench.js",
+    "bench:web": "webpack --mode production && node benchmarks/web-bench.js",
+    "lint": "eslint examples/**/*.js examples/**/*.ts",
+    "lint:fix": "eslint examples/**/*.js examples/**/*.ts --fix",
+    "format": "prettier --write examples/**/*.{js,ts,html,css}",
+    "clean": "rimraf pkg dist node_modules/.cache",
+    "docs": "typedoc --out docs/api pkg/tiny_vlm.d.ts",
+    "start": "npm run dev",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist",
+    "audit": "npm audit && cargo audit",
+    "outdated": "npm outdated && cargo outdated",
+    "security-check": "npm run audit && snyk test",
+    "size-analysis": "webpack-bundle-analyzer dist/main.js",
+    "precommit": "lint-staged"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.8",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "@wasm-tool/wasm-pack-plugin": "^1.7.0",
+    "css-loader": "^6.8.1",
+    "eslint": "^8.54.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "file-loader": "^6.2.0",
+    "gh-pages": "^6.1.0",
+    "html-webpack-plugin": "^5.5.3",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.1.0",
+    "prettier": "^3.1.0",
+    "rimraf": "^5.0.5",
+    "snyk": "^1.1256.0",
+    "style-loader": "^3.3.3",
+    "ts-jest": "^29.1.1",
+    "ts-loader": "^9.5.1",
+    "typedoc": "^0.25.4",
+    "typescript": "^5.3.2",
+    "webpack": "^5.89.0",
+    "webpack-bundle-analyzer": "^4.9.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
+  },
+  "dependencies": {},
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead",
+    "not ie 11"
+  ],
+  "lint-staged": {
+    "*.{js,ts}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{html,css,md}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt --",
+      "cargo clippy --fix --allow-dirty --allow-staged --"
+    ]
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "jsdom",
+    "testMatch": [
+      "**/tests/**/*.test.{js,ts}",
+      "**/examples/**/*.test.{js,ts}"
+    ],
+    "moduleFileExtensions": ["js", "ts", "wasm"],
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "examples/**/*.{js,ts}",
+      "!examples/**/*.test.{js,ts}",
+      "!examples/**/node_modules/**"
+    ]
+  },
+  "config": {
+    "wasm-pack": {
+      "target": "web",
+      "features": ["simd"]
+    }
+  }
+}
