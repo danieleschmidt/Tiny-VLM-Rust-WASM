@@ -43,7 +43,7 @@ Tiny-VLM-Rust-WASM provides an ultra-efficient Vision-Language Model implementat
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/Tiny-VLM-Rust-WASM
+git clone https://github.com/danieleschmidt/Tiny-VLM-Rust-WASM
 cd Tiny-VLM-Rust-WASM
 
 # Install Rust WASM target
@@ -500,9 +500,9 @@ MIT License - see [LICENSE](LICENSE) file.
 ```bibtex
 @software{tiny-vlm-rust-wasm,
   title={Tiny-VLM-Rust-WASM: Ultra-Efficient Mobile Vision-Language Models},
-  author={Your Name},
+  author={Daniel Schmidt},
   year={2025},
-  url={https://github.com/yourusername/Tiny-VLM-Rust-WASM}
+  url={https://github.com/danieleschmidt/Tiny-VLM-Rust-WASM}
 }
 ```
 
