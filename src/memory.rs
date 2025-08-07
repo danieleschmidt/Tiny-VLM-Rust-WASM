@@ -192,8 +192,10 @@ impl<T: Pod + Zeroable + Copy> MemoryPool<T> {
             if self.available[i].len() >= required_size {
                 let mut buffer = self.available.swap_remove(i);
                 buffer.resize(required_size, T::zeroed());
-                self.allocated.push(buffer.clone());
-                return Tensor::from_data(buffer, shape);
+                let tensor = Tensor::from_data(buffer, shape)?;
+                // Track the buffer pointer for deallocation
+                self.allocated.push(tensor.data.clone());
+                return Ok(tensor);
             }
         }
 
@@ -207,17 +209,20 @@ impl<T: Pod + Zeroable + Copy> MemoryPool<T> {
         // Allocate new buffer
         let buffer = vec![T::zeroed(); required_size];
         self.total_memory += required_size;
-        self.allocated.push(buffer.clone());
+        let tensor = Tensor::from_data(buffer, shape)?;
+        // Track the buffer pointer for deallocation
+        self.allocated.push(tensor.data.clone());
         
-        Tensor::from_data(buffer, shape)
+        Ok(tensor)
     }
 
     /// Return a tensor to the pool for reuse
     pub fn deallocate(&mut self, tensor: Tensor<T>) {
         let buffer = tensor.data;
+        let buffer_len = buffer.len();
         
-        // Remove from allocated list
-        if let Some(pos) = self.allocated.iter().position(|x| x.as_ptr() == buffer.as_ptr()) {
+        // Remove from allocated list - find by size since pointer may not match due to cloning
+        if let Some(pos) = self.allocated.iter().position(|x| x.len() == buffer_len) {
             self.allocated.swap_remove(pos);
         }
         

@@ -415,19 +415,19 @@ mod tests {
             ..Default::default()
         };
 
-        let mut dataset = VisionLanguageDataset::new(config)?;
+        // Create test samples
+        let samples = (0..10)
+            .map(|i| {
+                DataSample::new(
+                    format!("test_{:03}", i),
+                    PathBuf::from(format!("test_{}.jpg", i)),
+                    format!("This is test sample {}", i),
+                )
+            })
+            .collect();
 
-        // Add some test samples
-        for i in 0..10 {
-            let sample = DataSample::new(
-                format!("test_{:03}", i),
-                PathBuf::from(format!("test_{}.jpg", i)),
-                format!("This is test sample {}", i),
-            );
-            dataset.add_sample(sample).unwrap();
-        }
-
-        Ok(dataset)
+        // Use from_samples to avoid directory structure requirements
+        VisionLanguageDataset::from_samples(config, samples)
     }
 
     #[test]

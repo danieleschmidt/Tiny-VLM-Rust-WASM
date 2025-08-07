@@ -518,6 +518,7 @@ mod tests {
         };
         
         assert!(report.is_healthy());
-        assert_eq!(report.error_rate(), 5.0); // 5 failures out of 105 total
+        // 5 failures out of 105 total = 4.76%
+        assert!((report.error_rate() - 4.761904761904762).abs() < 1e-10);
     }
 }
