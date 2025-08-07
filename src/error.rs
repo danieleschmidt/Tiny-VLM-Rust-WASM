@@ -49,6 +49,11 @@ pub enum TinyVlmError {
     #[cfg(feature = "std")]
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Serialization errors
+    #[cfg(feature = "std")]
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
 }
 
 impl TinyVlmError {
@@ -96,6 +101,12 @@ impl TinyVlmError {
     #[cfg(feature = "wasm")]
     pub fn wasm(msg: impl Into<String>) -> Self {
         Self::Wasm(msg.into())
+    }
+
+    /// Create a serialization error
+    #[cfg(feature = "std")]
+    pub fn serialization(msg: impl Into<String>) -> Self {
+        Self::SerializationError(msg.into())
     }
 }
 

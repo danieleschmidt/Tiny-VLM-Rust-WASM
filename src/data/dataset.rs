@@ -150,6 +150,7 @@ impl DataSample {
 }
 
 /// Vision-Language dataset for training and evaluation
+#[derive(Clone)]
 pub struct VisionLanguageDataset {
     /// Dataset configuration
     config: DatasetConfig,
@@ -246,6 +247,36 @@ impl VisionLanguageDataset {
         dataset.load_from_jsonl(jsonl_path)?;
         dataset.compute_statistics()?;
         
+        Ok(dataset)
+    }
+
+    /// Create dataset from a vector of samples
+    pub fn from_samples(config: DatasetConfig, samples: Vec<DataSample>) -> Result<Self> {
+        let mut dataset = Self {
+            config,
+            samples: Vec::new(),
+            metadata: DatasetMetadata {
+                name: "Custom Dataset".into(),
+                version: "1.0".into(),
+                description: "A dataset created from provided samples".into(),
+                num_samples: 0,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                stats: DatasetStats {
+                    avg_text_length: 0.0,
+                    text_length_stats: (0, 0, 0.0),
+                    avg_image_size: 0.0,
+                    image_formats: HashMap::new(),
+                    vocab_size: 0,
+                },
+            },
+        };
+
+        // Add all samples
+        for sample in samples {
+            dataset.add_sample(sample)?;
+        }
+        
+        dataset.compute_statistics()?;
         Ok(dataset)
     }
 
@@ -421,7 +452,7 @@ impl VisionLanguageDataset {
         let images_dir = self.config.root_dir.join("images");
         if !images_dir.exists() {
             return Err(TinyVlmError::config(
-                "No images directory found in dataset root".into()
+                "No images directory found in dataset root"
             ));
         }
 

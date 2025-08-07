@@ -1,7 +1,7 @@
 //! Data loading utilities for efficient batch processing
 
 use crate::{
-    data::{DataSample, VisionLanguageDataset},
+    data::{DataSample, VisionLanguageDataset, dataset::{DatasetStats, DatasetMetadata}},
     memory::{MemoryPool, Tensor, TensorShape},
     Result, TinyVlmError,
 };
@@ -124,7 +124,7 @@ impl DataLoader {
         for i in 0..batch_size {
             let sample_idx = self.sample_indices[self.current_position + i];
             if let Some(sample) = self.dataset.get_sample(sample_idx) {
-                batch_samples.push(sample);
+                batch_samples.push(sample.clone());
             }
         }
 
@@ -169,7 +169,7 @@ impl DataLoader {
     }
 
     /// Get dataset statistics
-    pub fn dataset_stats(&self) -> crate::data::DatasetStats {
+    pub fn dataset_stats(&self) -> DatasetStats {
         self.dataset.stats().clone()
     }
 
@@ -182,7 +182,7 @@ impl DataLoader {
 
     fn process_batch(
         &mut self,
-        samples: Vec<&DataSample>,
+        samples: Vec<DataSample>,
         start_time: std::time::Instant,
     ) -> Result<DataBatch> {
         let batch_size = samples.len();
@@ -385,7 +385,7 @@ impl BatchLoader {
             
             // Randomly select a loader
             let selected = available_loaders.choose(&mut rand::thread_rng())
-                .ok_or_else(|| TinyVlmError::config("No available loaders".into()))?;
+                .ok_or_else(|| TinyVlmError::config("No available loaders"))?;
                 
             self.loaders[*selected].next_batch()
         }
@@ -408,43 +408,26 @@ mod tests {
     use crate::data::{DatasetConfig, VisionLanguageDataset, DataSample};
     use std::path::PathBuf;
 
-    fn create_test_dataset() -> VisionLanguageDataset {
+    fn create_test_dataset() -> Result<VisionLanguageDataset> {
         let config = DatasetConfig {
             root_dir: PathBuf::from("/tmp"),
             validate_data: false,
             ..Default::default()
         };
 
-        let mut dataset = VisionLanguageDataset {
-            config,
-            samples: Vec::new(),
-            metadata: crate::data::DatasetMetadata {
-                name: "Test".into(),
-                version: "1.0".into(),
-                description: "Test dataset".into(),
-                num_samples: 0,
-                created_at: "2023-01-01T00:00:00Z".into(),
-                stats: crate::data::DatasetStats {
-                    avg_text_length: 0.0,
-                    text_length_stats: (0, 0, 0.0),
-                    avg_image_size: 0.0,
-                    image_formats: std::collections::HashMap::new(),
-                    vocab_size: 0,
-                },
-            },
-        };
+        // Create test samples
+        let samples = (0..10)
+            .map(|i| {
+                DataSample::new(
+                    format!("test_{:03}", i),
+                    PathBuf::from(format!("test_{}.jpg", i)),
+                    format!("This is test sample {}", i),
+                )
+            })
+            .collect();
 
-        // Add some test samples
-        for i in 0..10 {
-            let sample = DataSample::new(
-                format!("test_{:03}", i),
-                PathBuf::from(format!("test_{}.jpg", i)),
-                format!("This is test sample {}", i),
-            );
-            dataset.add_sample(sample).unwrap();
-        }
-
-        dataset
+        // Use from_samples to avoid directory structure requirements
+        VisionLanguageDataset::from_samples(config, samples)
     }
 
     #[test]
@@ -457,7 +440,7 @@ mod tests {
 
     #[test]
     fn test_data_loader_creation() {
-        let dataset = create_test_dataset();
+        let dataset = create_test_dataset().unwrap();
         let config = DataLoaderConfig {
             batch_size: 4,
             ..Default::default()
@@ -472,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_data_loader_batches_per_epoch() {
-        let dataset = create_test_dataset();
+        let dataset = create_test_dataset().unwrap();
         
         // Test with drop_last = false
         let config = DataLoaderConfig {

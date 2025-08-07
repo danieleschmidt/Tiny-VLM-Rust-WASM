@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["std"]
-std = ["chrono", "rand", "tempfile"]
+std = ["chrono", "rand", "tempfile", "log", "tracing", "tracing-subscriber", "num_cpus"]
 simd = []
 native = ["std"]
 wasm = ["wasm-bindgen", "js-sys", "web-sys"]
@@ -45,11 +45,19 @@ serde_json = "1.0"
 # Error handling
 thiserror = "1.0"
 
+# Logging (std feature only)
+log = { version = "0.4", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
+
 # Date/time handling (std feature only)
 chrono = { version = "0.4", features = ["serde"], optional = true }
 
 # Random number generation
 rand = { version = "0.8", optional = true }
+
+# CPU count detection (std feature only)
+num_cpus = { version = "1.16", optional = true }
 
 # Temporary file handling (dev/test only)
 tempfile = { version = "3.8", optional = true }
@@ -65,13 +73,14 @@ rand = "0.8"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
-[[bench]]
-name = "inference"
-harness = false
+# Benchmarks will be added later
+# [[bench]]
+# name = "inference"
+# harness = false
 
-[[bench]]
-name = "simd_kernels"
-harness = false
+# [[bench]]
+# name = "simd_kernels"
+# harness = false
 
 [profile.release]
 lto = true

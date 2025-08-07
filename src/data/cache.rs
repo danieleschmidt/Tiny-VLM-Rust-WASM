@@ -281,17 +281,19 @@ impl DataCache {
     }
 
     fn evict_lru_entries(&mut self) -> Result<()> {
-        // Sort entries by last access time
-        let mut entries: Vec<_> = self.entries.iter().collect();
-        entries.sort_by_key(|(_, entry)| entry.last_accessed);
+        // Collect keys to remove (sorted by access time)
+        let mut keys_to_remove: Vec<_> = self.entries
+            .iter()
+            .map(|(key, entry)| (key.clone(), entry.last_accessed))
+            .collect();
+        keys_to_remove.sort_by_key(|(_, last_accessed)| *last_accessed);
 
         // Remove entries until under size limit
-        for (key, entry) in entries {
+        for (key, _) in keys_to_remove {
             if self.stats.total_size_bytes <= self.config.max_size_bytes {
                 break;
             }
 
-            let key = key.clone();
             if let Some(entry) = self.entries.remove(&key) {
                 self.stats.total_size_bytes -= entry.size_bytes;
                 let _ = std::fs::remove_file(&entry.file_path);
@@ -329,7 +331,8 @@ impl DataCache {
 
     fn save_metadata(&self) -> Result<()> {
         let metadata_path = self.config.cache_dir.join("metadata.json");
-        let metadata_json = serde_json::to_string_pretty(&self.entries)?;
+        let metadata_json = serde_json::to_string_pretty(&self.entries)
+            .map_err(|e| TinyVlmError::serialization(format!("Failed to serialize cache metadata: {}", e)))?;
         std::fs::write(metadata_path, metadata_json)?;
         Ok(())
     }
