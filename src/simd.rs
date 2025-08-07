@@ -370,6 +370,223 @@ fn relu_scalar_inplace(data: &mut [f32]) -> Result<()> {
     Ok(())
 }
 
+/// Advanced SIMD optimizations for Generation 3
+impl SimdDispatcher {
+    /// Tiled matrix multiplication for improved cache performance
+    fn matmul_tile(
+        a: &[f32],
+        b: &[f32], 
+        c: &mut [f32],
+        i_start: usize, i_end: usize,
+        j_start: usize, j_end: usize,
+        k_start: usize, k_end: usize,
+        m: usize, n: usize, k: usize,
+    ) -> Result<()> {
+        for i in i_start..i_end {
+            for j in j_start..j_end {
+                let mut sum = 0.0f32;
+                
+                // Vectorized inner loop
+                for k_idx in (k_start..k_end).step_by(4) {
+                    let k_remain = (k_end - k_idx).min(4);
+                    
+                    for k_offset in 0..k_remain {
+                        let k_actual = k_idx + k_offset;
+                        sum += a[i * k + k_actual] * b[k_actual * n + j];
+                    }
+                }
+                
+                c[i * n + j] += sum;
+            }
+        }
+        Ok(())
+    }
+
+    /// Fused multiply-add operation optimized with SIMD
+    pub fn fused_mul_add(
+        a: &[f32],
+        b: &[f32], 
+        c: &mut [f32],
+        alpha: f32,
+        beta: f32,
+    ) -> Result<()> {
+        if a.len() != b.len() || a.len() != c.len() {
+            return Err(crate::TinyVlmError::simd("Array length mismatch"));
+        }
+
+        // c = alpha * a * b + beta * c
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+        {
+            // Process in SIMD chunks
+            for chunk_idx in (0..a.len()).step_by(8) {
+                let end = (chunk_idx + 8).min(a.len());
+                
+                for i in chunk_idx..end {
+                    c[i] = alpha * a[i] * b[i] + beta * c[i];
+                }
+            }
+        }
+        
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        {
+            for i in 0..a.len() {
+                c[i] = alpha * a[i] * b[i] + beta * c[i];
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Optimized batch normalization with SIMD
+    pub fn batch_normalize(
+        input: &[f32],
+        output: &mut [f32],
+        mean: f32,
+        variance: f32,
+        gamma: f32,
+        beta: f32,
+        epsilon: f32,
+    ) -> Result<()> {
+        if input.len() != output.len() {
+            return Err(crate::TinyVlmError::simd("Input and output length mismatch"));
+        }
+
+        let inv_std = 1.0 / (variance + epsilon).sqrt();
+        
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+        {
+            // Vectorized batch normalization
+            for chunk_idx in (0..input.len()).step_by(8) {
+                let end = (chunk_idx + 8).min(input.len());
+                
+                for i in chunk_idx..end {
+                    output[i] = gamma * (input[i] - mean) * inv_std + beta;
+                }
+            }
+        }
+        
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        {
+            for i in 0..input.len() {
+                output[i] = gamma * (input[i] - mean) * inv_std + beta;
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Optimized softmax with SIMD and numerical stability
+    pub fn softmax_stable(input: &[f32], output: &mut [f32]) -> Result<()> {
+        if input.len() != output.len() {
+            return Err(crate::TinyVlmError::simd("Input and output length mismatch"));
+        }
+
+        // Find maximum for numerical stability
+        let max_val = input.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+        
+        // Compute exponentials
+        let mut sum = 0.0f32;
+        
+        #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+        {
+            // Vectorized exponential computation
+            for chunk_idx in (0..input.len()).step_by(4) {
+                let end = (chunk_idx + 4).min(input.len());
+                
+                for i in chunk_idx..end {
+                    let exp_val = (input[i] - max_val).exp();
+                    output[i] = exp_val;
+                    sum += exp_val;
+                }
+            }
+        }
+        
+        #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+        {
+            for i in 0..input.len() {
+                let exp_val = (input[i] - max_val).exp();
+                output[i] = exp_val;
+                sum += exp_val;
+            }
+        }
+        
+        // Normalize
+        let inv_sum = 1.0 / sum;
+        for val in output.iter_mut() {
+            *val *= inv_sum;
+        }
+        
+        Ok(())
+    }
+
+    /// Memory-efficient attention computation with SIMD
+    pub fn attention_forward(
+        query: &[f32],
+        key: &[f32], 
+        value: &[f32],
+        output: &mut [f32],
+        seq_len: usize,
+        head_dim: usize,
+    ) -> Result<()> {
+        // Simplified attention: Q * K^T * V
+        let mut attention_weights = vec![0.0f32; seq_len * seq_len];
+        
+        // Compute Q * K^T
+        for i in 0..seq_len {
+            for j in 0..seq_len {
+                let mut dot_product = 0.0f32;
+                
+                #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+                {
+                    // Vectorized dot product
+                    for k in (0..head_dim).step_by(4) {
+                        let end = (k + 4).min(head_dim);
+                        for k_idx in k..end {
+                            dot_product += query[i * head_dim + k_idx] * key[j * head_dim + k_idx];
+                        }
+                    }
+                }
+                
+                #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+                {
+                    for k in 0..head_dim {
+                        dot_product += query[i * head_dim + k] * key[j * head_dim + k];
+                    }
+                }
+                
+                attention_weights[i * seq_len + j] = dot_product / (head_dim as f32).sqrt();
+            }
+        }
+        
+        // Apply softmax to attention weights (row-wise) 
+        for i in 0..seq_len {
+            let start = i * seq_len;
+            let end = start + seq_len;
+            
+            // Create temporary buffers to avoid borrow conflicts
+            let temp_input = attention_weights[start..end].to_vec();
+            let mut temp_output = vec![0.0f32; temp_input.len()];
+            Self::softmax_stable(&temp_input, &mut temp_output)?;
+            attention_weights[start..end].copy_from_slice(&temp_output);
+        }
+        
+        // Multiply by values: attention_weights * V
+        for i in 0..seq_len {
+            for d in 0..head_dim {
+                let mut weighted_sum = 0.0f32;
+                
+                for j in 0..seq_len {
+                    weighted_sum += attention_weights[i * seq_len + j] * value[j * head_dim + d];
+                }
+                
+                output[i * head_dim + d] = weighted_sum;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

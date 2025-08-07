@@ -9,10 +9,14 @@
 
 pub mod data;
 pub mod error;
+pub mod health;
+pub mod logging;
 pub mod memory;
 pub mod models;
+pub mod optimization;
 pub mod simd;
 pub mod text;
+pub mod validation;
 pub mod vision;
 
 #[cfg(feature = "wasm")]
@@ -26,8 +30,12 @@ pub use memory::{MemoryPool, Tensor, TensorShape};
 pub mod prelude {
     pub use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError};
     pub use crate::data::{DataLoader, DataSample, VisionLanguageDataset, DatasetConfig};
+    pub use crate::health::{HealthMonitor, HealthReport, HealthStatus};
+    pub use crate::logging::{LogConfig, LogFormat, PerformanceTimer};
     pub use crate::memory::{MemoryPool, Tensor, TensorShape};
+    pub use crate::optimization::{AdaptiveCache, CacheConfig, LoadBalancer, LoadBalancingStrategy};
     pub use crate::text::{Tokenizer, TokenizerConfig};
+    pub use crate::validation::{ValidationResult, validate_image_data, validate_text_input};
     pub use crate::vision::{ImageProcessor, VisionEncoder};
 }
 

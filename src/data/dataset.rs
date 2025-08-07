@@ -150,6 +150,7 @@ impl DataSample {
 }
 
 /// Vision-Language dataset for training and evaluation
+#[derive(Clone)]
 pub struct VisionLanguageDataset {
     /// Dataset configuration
     config: DatasetConfig,
@@ -421,7 +422,7 @@ impl VisionLanguageDataset {
         let images_dir = self.config.root_dir.join("images");
         if !images_dir.exists() {
             return Err(TinyVlmError::config(
-                "No images directory found in dataset root".into()
+                "No images directory found in dataset root"
             ));
         }
 

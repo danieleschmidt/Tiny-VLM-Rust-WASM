@@ -99,6 +99,8 @@ pub struct FastVLM {
 impl FastVLM {
     /// Create a new FastVLM model with given configuration
     pub fn new(config: ModelConfig) -> Result<Self> {
+        // Validate configuration
+        crate::validation::validate_model_config(&config).into_result()?;
         // Initialize vision encoder
         let vision_encoder = VisionEncoder::new(config.vision_config.clone())?;
         
@@ -153,6 +155,14 @@ impl FastVLM {
 
     /// Perform inference on an image with a text prompt
     pub fn infer(&mut self, image_data: &[u8], prompt: &str, config: InferenceConfig) -> Result<String> {
+        // Validate inputs
+        crate::validation::validate_image_data(image_data).into_result()?;
+        crate::validation::validate_text_input(prompt).into_result()?;
+        crate::validation::validate_inference_config(&config).into_result()?;
+
+        #[cfg(feature = "std")]
+        let _timer = crate::logging::PerformanceTimer::new("model_inference");
+
         // Process image
         let image_tensor = self.image_processor.preprocess(image_data)?;
         
@@ -177,7 +187,25 @@ impl FastVLM {
         )?;
         
         // Generate text response
-        self.generate_text(&fused_features, &text_tokens, config)
+        let response = self.generate_text(&fused_features, &text_tokens, config)?;
+
+        // Log performance metrics
+        #[cfg(feature = "std")]
+        {
+            let inference_time = _timer.elapsed_ms();
+            let memory_stats = self.memory_stats();
+            let memory_mb = (memory_stats.allocated_memory as f64) / (1024.0 * 1024.0);
+            
+            crate::logging::log_inference_metrics(
+                &self.config,
+                inference_time,
+                memory_mb,
+                text_tokens.len(),
+                response.split_whitespace().count(), // Rough token count
+            );
+        }
+
+        Ok(response)
     }
 
     /// Process image and return visual features
