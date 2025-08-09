@@ -17,7 +17,7 @@ default = ["std"]
 std = ["chrono", "rand", "tempfile", "log", "tracing", "tracing-subscriber", "num_cpus"]
 simd = []
 native = ["std"]
-wasm = ["wasm-bindgen", "js-sys", "web-sys"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "console_error_panic_hook", "js-sys", "web-sys"]
 
 [dependencies]
 # Core dependencies
@@ -27,12 +27,15 @@ num-traits = "0.2"
 
 # WASM-specific dependencies
 wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", optional = true, features = [
   "console",
   "ImageData",
   "CanvasRenderingContext2d",
   "HtmlCanvasElement",
+  "File",
 ] }
 
 # Image processing
@@ -69,18 +72,14 @@ wasm-bindgen-test = "0.3"
 tempfile = "3.8"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
+env_logger = "0.10"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 
-# Benchmarks will be added later
-# [[bench]]
-# name = "inference"
-# harness = false
-
-# [[bench]]
-# name = "simd_kernels"
-# harness = false
+[[bench]]
+name = "performance_benchmarks"
+harness = false
 
 [profile.release]
 lto = true

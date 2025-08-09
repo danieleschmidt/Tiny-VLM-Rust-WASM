@@ -448,8 +448,6 @@ impl HealthReport {
 }
 
 // Make health report serializable
-#[cfg(feature = "std")]
-use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests {

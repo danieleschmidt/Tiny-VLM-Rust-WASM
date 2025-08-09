@@ -2,7 +2,6 @@
 
 use crate::{
     memory::{MemoryPool, Tensor, TensorShape},
-    simd::SimdDispatcher,
     text::{Tokenizer, TokenizerConfig},
     vision::{ImageProcessor, VisionConfig, VisionEncoder},
     Result, TinyVlmError,
@@ -144,7 +143,7 @@ impl FastVLM {
         // In a real implementation, this would load weights from a file
         // For now, create a default model
         let config = ModelConfig::default();
-        let mut model = Self::new(config)?;
+        let model = Self::new(config)?;
         
         // Log that we're using default weights instead of loading
         #[cfg(feature = "std")]
@@ -246,7 +245,7 @@ impl FastVLM {
         config: InferenceConfig,
     ) -> Result<String> {
         let mut generated_tokens = initial_tokens.to_vec();
-        let (_, bos_token, eos_token, _) = self.tokenizer.special_tokens();
+        let (_, _bos_token, eos_token, _) = self.tokenizer.special_tokens();
 
         // Limit generation length
         let max_new_tokens = config.max_length.min(self.config.max_gen_length);

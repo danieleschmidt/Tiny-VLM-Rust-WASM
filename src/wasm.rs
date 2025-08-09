@@ -1,9 +1,9 @@
 //! WebAssembly bindings for browser integration
 
-use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError};
+use crate::{FastVLM, InferenceConfig, ModelConfig};
 use wasm_bindgen::prelude::*;
 use js_sys::{Array, Object, Reflect, Uint8Array};
-use web_sys::{console, ImageData};
+use web_sys::ImageData;
 
 // Enable console.log! and other web APIs
 #[wasm_bindgen]
@@ -26,7 +26,7 @@ pub struct WasmFastVLM {
 impl WasmFastVLM {
     /// Create a new FastVLM instance with default configuration
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Result<WasmFastVLM, JsValue> {
+    pub fn new() -> std::result::Result<WasmFastVLM, JsValue> {
         console_log!("Initializing FastVLM with default configuration");
         
         let config = ModelConfig::default();
@@ -38,7 +38,7 @@ impl WasmFastVLM {
 
     /// Create a new FastVLM instance with custom configuration
     #[wasm_bindgen(js_name = newWithConfig)]
-    pub fn new_with_config(config_js: &JsValue) -> Result<WasmFastVLM, JsValue> {
+    pub fn new_with_config(config_js: &JsValue) -> std::result::Result<WasmFastVLM, JsValue> {
         let config = parse_model_config(config_js)?;
         let model = FastVLM::new(config)
             .map_err(|e| JsValue::from_str(&format!("Failed to create model: {}", e)))?;
@@ -48,7 +48,7 @@ impl WasmFastVLM {
 
     /// Load a model from a URL or file path
     #[wasm_bindgen(js_name = loadFromUrl)]
-    pub async fn load_from_url(url: &str) -> Result<WasmFastVLM, JsValue> {
+    pub async fn load_from_url(url: &str) -> std::result::Result<WasmFastVLM, JsValue> {
         console_log!("Loading model from URL: {}", url);
         
         // In a real implementation, this would fetch and parse model weights
@@ -61,7 +61,7 @@ impl WasmFastVLM {
 
     /// Perform inference on an image with a text prompt
     #[wasm_bindgen]
-    pub fn infer(&mut self, image_data: &Uint8Array, prompt: &str) -> Result<String, JsValue> {
+    pub fn infer(&mut self, image_data: &Uint8Array, prompt: &str) -> std::result::Result<String, JsValue> {
         let image_bytes = image_data.to_vec();
         let config = InferenceConfig::default();
         
@@ -77,7 +77,7 @@ impl WasmFastVLM {
         image_data: &Uint8Array,
         prompt: &str,
         config_js: &JsValue,
-    ) -> Result<String, JsValue> {
+    ) -> std::result::Result<String, JsValue> {
         let image_bytes = image_data.to_vec();
         let config = parse_inference_config(config_js)?;
         
@@ -92,17 +92,17 @@ impl WasmFastVLM {
         &mut self,
         image_data: &ImageData,
         prompt: &str,
-    ) -> Result<String, JsValue> {
+    ) -> std::result::Result<String, JsValue> {
         // Extract RGB data from ImageData (RGBA -> RGB conversion)
         let rgba_data = image_data.data();
         let width = image_data.width() as usize;
         let height = image_data.height() as usize;
         
         let mut rgb_data = Vec::with_capacity(width * height * 3);
-        for i in (0..rgba_data.length()).step_by(4) {
-            rgb_data.push(rgba_data.get_index(i) as u8);     // R
-            rgb_data.push(rgba_data.get_index(i + 1) as u8); // G
-            rgb_data.push(rgba_data.get_index(i + 2) as u8); // B
+        for i in (0..rgba_data.len()).step_by(4) {
+            rgb_data.push(rgba_data[i]);     // R
+            rgb_data.push(rgba_data[i + 1]); // G
+            rgb_data.push(rgba_data[i + 2]); // B
             // Skip alpha channel
         }
         
@@ -114,7 +114,7 @@ impl WasmFastVLM {
 
     /// Encode image to feature vector
     #[wasm_bindgen(js_name = encodeImage)]
-    pub fn encode_image(&mut self, image_data: &Uint8Array) -> Result<Array, JsValue> {
+    pub fn encode_image(&mut self, image_data: &Uint8Array) -> std::result::Result<Array, JsValue> {
         let image_bytes = image_data.to_vec();
         
         let features = self.model
@@ -127,7 +127,7 @@ impl WasmFastVLM {
 
     /// Encode text to feature vector
     #[wasm_bindgen(js_name = encodeText)]
-    pub fn encode_text(&mut self, text: &str) -> Result<Array, JsValue> {
+    pub fn encode_text(&mut self, text: &str) -> std::result::Result<Array, JsValue> {
         let features = self.model
             .encode_text(text)
             .map_err(|e| JsValue::from_str(&format!("Text encoding failed: {}", e)))?;
@@ -178,7 +178,7 @@ impl WasmFastVLM {
         &mut self,
         file: &web_sys::File,
         prompt: &str,
-    ) -> Result<String, JsValue> {
+    ) -> std::result::Result<String, JsValue> {
         // Convert File to ArrayBuffer and then to Uint8Array
         let array_buffer = wasm_bindgen_futures::JsFuture::from(file.array_buffer())
             .await?;
@@ -191,10 +191,10 @@ impl WasmFastVLM {
 /// Utility functions for JavaScript interop
 
 /// Parse ModelConfig from JavaScript object
-fn parse_model_config(config_js: &JsValue) -> Result<ModelConfig, JsValue> {
+fn parse_model_config(config_js: &JsValue) -> std::result::Result<ModelConfig, JsValue> {
     let mut config = ModelConfig::default();
     
-    if let Ok(obj) = config_js.dyn_ref::<Object>() {
+    if let Some(obj) = config_js.dyn_ref::<Object>() {
         // Parse vision configuration
         if let Ok(vision_dim) = Reflect::get(obj, &"visionDim".into()) {
             if let Some(dim) = vision_dim.as_f64() {
@@ -231,10 +231,10 @@ fn parse_model_config(config_js: &JsValue) -> Result<ModelConfig, JsValue> {
 }
 
 /// Parse InferenceConfig from JavaScript object
-fn parse_inference_config(config_js: &JsValue) -> Result<InferenceConfig, JsValue> {
+fn parse_inference_config(config_js: &JsValue) -> std::result::Result<InferenceConfig, JsValue> {
     let mut config = InferenceConfig::default();
     
-    if let Ok(obj) = config_js.dyn_ref::<Object>() {
+    if let Some(obj) = config_js.dyn_ref::<Object>() {
         if let Ok(max_length) = Reflect::get(obj, &"maxLength".into()) {
             if let Some(length) = max_length.as_f64() {
                 config.max_length = length as usize;
@@ -282,7 +282,7 @@ fn model_config_to_js(config: &ModelConfig) -> JsValue {
 }
 
 /// Convert tensor to JavaScript array
-fn tensor_to_js_array(tensor: &crate::memory::Tensor<f32>) -> Result<Array, JsValue> {
+fn tensor_to_js_array(tensor: &crate::memory::Tensor<f32>) -> std::result::Result<Array, JsValue> {
     let data = tensor.data();
     let array = Array::new();
     
@@ -334,7 +334,7 @@ impl WasmUtils {
         input_height: u32,
         target_width: u32,
         target_height: u32,
-    ) -> Result<Uint8Array, JsValue> {
+    ) -> std::result::Result<Uint8Array, JsValue> {
         let input = input_data.to_vec();
         let input_len = input_width as usize * input_height as usize * 3;
         
