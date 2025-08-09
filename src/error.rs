@@ -2,6 +2,9 @@
 
 use thiserror::Error;
 
+#[cfg(feature = "wasm")]
+use wasm_bindgen::JsValue;
+
 /// Result type alias for Tiny-VLM operations
 pub type Result<T> = core::result::Result<T, TinyVlmError>;
 
@@ -107,6 +110,25 @@ impl TinyVlmError {
     #[cfg(feature = "std")]
     pub fn serialization(msg: impl Into<String>) -> Self {
         Self::SerializationError(msg.into())
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl From<TinyVlmError> for JsValue {
+    fn from(error: TinyVlmError) -> Self {
+        JsValue::from_str(&format!("{}", error))
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl From<JsValue> for TinyVlmError {
+    fn from(js_value: JsValue) -> Self {
+        let error_msg = if let Some(s) = js_value.as_string() {
+            s
+        } else {
+            "Unknown JavaScript error".to_string()
+        };
+        TinyVlmError::Wasm(error_msg)
     }
 }
 

@@ -1,0 +1,374 @@
+# Production Deployment Configuration for Tiny-VLM-Rust-WASM
+# Kubernetes deployment with auto-scaling and health checks
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tiny-vlm
+  labels:
+    app: tiny-vlm
+    version: v0.1.0
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tiny-vlm-config
+  namespace: tiny-vlm
+data:
+  MODEL_CONFIG: |
+    {
+      "vision_dim": 768,
+      "text_dim": 768,
+      "hidden_dim": 768,
+      "num_heads": 12,
+      "max_gen_length": 100,
+      "temperature": 0.8
+    }
+  INFERENCE_CONFIG: |
+    {
+      "max_length": 100,
+      "temperature": 1.0,
+      "top_p": 0.9,
+      "top_k": 50,
+      "deterministic": false,
+      "memory_limit_mb": 100
+    }
+  PERFORMANCE_TARGETS: |
+    {
+      "mobile_inference_ms": 200,
+      "server_inference_ms": 50,
+      "memory_limit_mb": 500,
+      "throughput_rps": 100
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tiny-vlm-api
+  namespace: tiny-vlm
+  labels:
+    app: tiny-vlm-api
+    version: v0.1.0
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: tiny-vlm-api
+  template:
+    metadata:
+      labels:
+        app: tiny-vlm-api
+        version: v0.1.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: tiny-vlm-api
+        image: tiny-vlm/api:v0.1.0
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: health
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: BIND_ADDRESS
+          value: "0.0.0.0:8080"
+        - name: HEALTH_ADDRESS
+          value: "0.0.0.0:8081"
+        - name: MAX_CONCURRENT_REQUESTS
+          value: "100"
+        - name: REQUEST_TIMEOUT_MS
+          value: "30000"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 12
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: models
+          mountPath: /app/models
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: tiny-vlm-config
+      - name: models
+        persistentVolumeClaim:
+          claimName: tiny-vlm-models
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiny-vlm-api-service
+  namespace: tiny-vlm
+  labels:
+    app: tiny-vlm-api
+spec:
+  selector:
+    app: tiny-vlm-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: health
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tiny-vlm-api-hpa
+  namespace: tiny-vlm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tiny-vlm-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tiny-vlm-ingress
+  namespace: tiny-vlm
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/rate-limit-connections: "100"
+    nginx.ingress.kubernetes.io/rate-limit-requests-per-minute: "1000"
+    nginx.ingress.kubernetes.io/client-max-body-size: "10m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - api.tiny-vlm.ai
+    secretName: tiny-vlm-tls
+  rules:
+  - host: api.tiny-vlm.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: tiny-vlm-api-service
+            port:
+              number: 80
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tiny-vlm-models
+  namespace: tiny-vlm
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tiny-vlm-api-pdb
+  namespace: tiny-vlm
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: tiny-vlm-api
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tiny-vlm-api
+  namespace: tiny-vlm
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tiny-vlm-api-role
+  namespace: tiny-vlm
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tiny-vlm-api-binding
+  namespace: tiny-vlm
+subjects:
+- kind: ServiceAccount
+  name: tiny-vlm-api
+  namespace: tiny-vlm
+roleRef:
+  kind: Role
+  name: tiny-vlm-api-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Monitoring and Observability
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiny-vlm-metrics
+  namespace: tiny-vlm
+  labels:
+    app: tiny-vlm-api
+    component: metrics
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: tiny-vlm-api
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tiny-vlm-api-monitor
+  namespace: tiny-vlm
+  labels:
+    app: tiny-vlm-api
+spec:
+  selector:
+    matchLabels:
+      app: tiny-vlm-api
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# Network Policy for Security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tiny-vlm-netpol
+  namespace: tiny-vlm
+spec:
+  podSelector:
+    matchLabels:
+      app: tiny-vlm-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80

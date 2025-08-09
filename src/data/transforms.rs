@@ -1,6 +1,6 @@
 //! Data transformation utilities for preprocessing
 
-use crate::{Result, TinyVlmError};
+use crate::Result;
 
 /// Trait for image transformations
 pub trait ImageTransform {

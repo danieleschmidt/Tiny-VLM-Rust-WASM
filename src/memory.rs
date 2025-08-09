@@ -2,7 +2,6 @@
 
 use crate::{Result, TinyVlmError};
 use bytemuck::{Pod, Zeroable};
-use core::mem;
 
 /// Shape descriptor for multi-dimensional tensors
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

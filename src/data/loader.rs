@@ -1,7 +1,7 @@
 //! Data loading utilities for efficient batch processing
 
 use crate::{
-    data::{DataSample, VisionLanguageDataset, dataset::{DatasetStats, DatasetMetadata}},
+    data::{DataSample, VisionLanguageDataset, dataset::DatasetStats},
     memory::{MemoryPool, Tensor, TensorShape},
     Result, TinyVlmError,
 };
