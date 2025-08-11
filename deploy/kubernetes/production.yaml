@@ -1,0 +1,297 @@
+# Production-ready Kubernetes deployment for Tiny-VLM
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tiny-vlm-production
+  labels:
+    name: tiny-vlm-production
+    environment: production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tiny-vlm-config
+  namespace: tiny-vlm-production
+data:
+  config.yaml: |
+    service:
+      port: 8080
+      environment: Production
+      log_level: info
+    model:
+      max_batch_size: 4
+      timeout_seconds: 30
+      memory_limit_mb: 150
+    security:
+      rate_limit_per_minute: 60
+      max_image_size_mb: 10
+      max_text_length: 500
+    monitoring:
+      prometheus_port: 9090
+      health_check_path: "/health"
+      metrics_path: "/metrics"
+    scaling:
+      initial_replicas: 3
+      max_replicas: 10
+      target_cpu_percent: 70
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+  labels:
+    app: tiny-vlm
+    version: v1.0.0
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: tiny-vlm
+  template:
+    metadata:
+      labels:
+        app: tiny-vlm
+        version: v1.0.0
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      serviceAccountName: tiny-vlm
+      containers:
+      - name: tiny-vlm
+        image: ghcr.io/tiny-vlm/tiny-vlm:v1.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: BIND_ADDRESS
+          value: "0.0.0.0:8080"
+        - name: METRICS_PORT
+          value: "9090"
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65534
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: config
+          mountPath: /etc/tiny-vlm
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 100Mi
+      - name: config
+        configMap:
+          name: tiny-vlm-config
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - tiny-vlm
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+  labels:
+    app: tiny-vlm
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: metrics
+    protocol: TCP
+    name: metrics
+  selector:
+    app: tiny-vlm
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit: "60"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "20"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/client-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+spec:
+  tls:
+  - hosts:
+    - api.tiny-vlm.com
+    secretName: tiny-vlm-tls
+  rules:
+  - host: api.tiny-vlm.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: tiny-vlm
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tiny-vlm
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+spec:
+  podSelector:
+    matchLabels:
+      app: tiny-vlm
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: nginx-ingress
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tiny-vlm
+  namespace: tiny-vlm-production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: tiny-vlm

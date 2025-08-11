@@ -8,12 +8,16 @@
 #![warn(missing_docs, rust_2018_idioms)]
 
 pub mod data;
+pub mod deployment;
 pub mod error;
 pub mod health;
 pub mod logging;
 pub mod memory;
 pub mod models;
+pub mod monitoring;
 pub mod optimization;
+pub mod scaling;
+pub mod security;
 pub mod simd;
 pub mod text;
 pub mod validation;
