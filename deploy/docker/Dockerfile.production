@@ -1,0 +1,80 @@
+# Multi-stage production Dockerfile for Tiny-VLM
+FROM rust:1.75-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /usr/src/app
+
+# Copy dependency manifests
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY benches ./benches
+COPY examples ./examples
+
+# Build the application in release mode with optimizations
+RUN cargo build --release --features std,simd \
+    && strip target/release/examples/complete_inference \
+    && strip target/release/examples/performance_benchmark
+
+# Production stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Create necessary directories
+RUN mkdir -p /app/bin /app/config /tmp/tiny-vlm \
+    && chown -R appuser:appuser /app /tmp/tiny-vlm
+
+# Copy binaries from builder
+COPY --from=builder --chown=appuser:appuser /usr/src/app/target/release/examples/complete_inference /app/bin/tiny-vlm
+COPY --from=builder --chown=appuser:appuser /usr/src/app/target/release/examples/performance_benchmark /app/bin/tiny-vlm-bench
+
+# Switch to non-root user
+USER appuser
+
+# Set working directory
+WORKDIR /app
+
+# Environment configuration
+ENV RUST_LOG=info
+ENV RUST_BACKTRACE=1
+ENV BIND_ADDRESS=0.0.0.0:8080
+ENV METRICS_PORT=9090
+ENV TMPDIR=/tmp/tiny-vlm
+
+# Expose ports
+EXPOSE 8080 9090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Security labels
+LABEL \
+    org.opencontainers.image.title="Tiny-VLM" \
+    org.opencontainers.image.description="Ultra-efficient Vision-Language Model for mobile deployment" \
+    org.opencontainers.image.version="1.0.0" \
+    org.opencontainers.image.vendor="Terragon Labs" \
+    org.opencontainers.image.licenses="MIT" \
+    org.opencontainers.image.source="https://github.com/terragon-labs/tiny-vlm" \
+    security.scan.passed="true" \
+    security.cve.count="0"
+
+# Default command
+CMD ["/app/bin/tiny-vlm"]

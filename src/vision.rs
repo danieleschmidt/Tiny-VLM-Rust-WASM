@@ -210,17 +210,52 @@ impl VisionEncoder {
 
     /// Add position embeddings to patch embeddings
     fn add_position_embeddings(&self, patch_features: &mut Tensor<f32>) -> Result<()> {
+        let patch_shape = patch_features.shape();
+        let pos_shape = self.position_embeddings.shape();
+        
+        // Ensure the patch features are reshaped to match position embeddings
+        // The conv layer outputs [batch, out_height, out_width, channels]
+        // We need to flatten to [batch, seq_len, hidden_dim] where seq_len = out_height * out_width
+        
+        let batch_size = patch_shape.dims[0];
+        let out_height = patch_shape.dims[1];
+        let out_width = patch_shape.dims[2];
+        let hidden_dim = patch_shape.dims[3];
+        
+        let seq_len = out_height * out_width;
+        let expected_seq_len = pos_shape.dims[1] - 1; // -1 for CLS token
+        
+        // Validate dimensions match
+        if seq_len != expected_seq_len {
+            return Err(TinyVlmError::inference(&format!(
+                "Sequence length mismatch: patch features {} vs position embeddings {}",
+                seq_len, expected_seq_len
+            )));
+        }
+        
+        if hidden_dim != pos_shape.dims[2] {
+            return Err(TinyVlmError::inference(&format!(
+                "Hidden dimension mismatch: patch features {} vs position embeddings {}",
+                hidden_dim, pos_shape.dims[2]
+            )));
+        }
+        
         let patch_data = patch_features.data_mut();
         let pos_data = self.position_embeddings.data();
-
-        if patch_data.len() != pos_data.len() {
-            return Err(TinyVlmError::inference("Position embedding size mismatch"));
+        
+        // Add position embeddings to patch embeddings
+        // Skip the CLS token embedding (index 0) and use patch embeddings (indices 1..seq_len+1)
+        for seq_pos in 0..seq_len {
+            for hidden_idx in 0..hidden_dim {
+                let patch_idx = seq_pos * hidden_dim + hidden_idx;
+                let pos_idx = (seq_pos + 1) * hidden_dim + hidden_idx; // +1 to skip CLS token
+                
+                if patch_idx < patch_data.len() && pos_idx < pos_data.len() {
+                    patch_data[patch_idx] += pos_data[pos_idx];
+                }
+            }
         }
-
-        for (patch_val, pos_val) in patch_data.iter_mut().zip(pos_data.iter()) {
-            *patch_val += pos_val;
-        }
-
+        
         Ok(())
     }
 
