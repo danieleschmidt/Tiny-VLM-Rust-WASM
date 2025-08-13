@@ -97,9 +97,13 @@ impl MonitoringSystem {
                 TinyVlmError::Inference(_) => "inference",
                 TinyVlmError::Memory(_) => "memory",
                 TinyVlmError::Simd(_) => "simd",
-                TinyVlmError::Io(_) => "io",
                 TinyVlmError::ModelLoading(_) => "model_loading",
                 TinyVlmError::InvalidInput(_) => "invalid_input",
+                #[cfg(feature = "wasm")]
+                TinyVlmError::Wasm(_) => "wasm",
+                #[cfg(feature = "std")]
+                TinyVlmError::Io(_) => "io",
+                #[cfg(feature = "std")]
                 TinyVlmError::SerializationError(_) => "serialization",
             };
             

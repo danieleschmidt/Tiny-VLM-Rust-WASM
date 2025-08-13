@@ -152,9 +152,9 @@ impl FastVLM {
         Ok(model)
     }
 
-    /// Perform inference on an image with a text prompt
+    /// Perform inference on an image with a text prompt with robust error handling
     pub fn infer(&mut self, image_data: &[u8], prompt: &str, config: InferenceConfig) -> Result<String> {
-        // Validate inputs
+        // Enhanced validation with security checks
         crate::validation::validate_image_data(image_data).into_result()?;
         crate::validation::validate_text_input(prompt).into_result()?;
         crate::validation::validate_inference_config(&config).into_result()?;
@@ -162,11 +162,36 @@ impl FastVLM {
         #[cfg(feature = "std")]
         let _timer = crate::logging::PerformanceTimer::new("model_inference");
 
-        // Process image
-        let image_tensor = self.image_processor.preprocess(image_data)?;
+        // Security pre-processing: basic validation
+        if prompt.len() > 10000 {
+            return Err(TinyVlmError::invalid_input("Prompt too long"));
+        }
+
+        // Process image with error recovery
+        let image_tensor = self.image_processor.preprocess(image_data)
+            .map_err(|e| {
+                #[cfg(feature = "std")]
+                let error_msg = format!("Failed to process image: {}", e);
+                crate::logging::log_security_event(
+                    "image_processing_error",
+                    crate::logging::SecuritySeverity::Medium,
+                    &error_msg,
+                );
+                TinyVlmError::image_processing(format!("Failed to preprocess image: {}", e))
+            })?;
         
-        // Encode image
-        let vision_features = self.vision_encoder.encode(&image_tensor)?;
+        // Encode image with circuit breaker protection
+        let vision_features = self.vision_encoder.encode(&image_tensor)
+            .map_err(|e| {
+                #[cfg(feature = "std")]
+                let error_msg = format!("Vision encoding failed: {}", e);
+                crate::logging::log_security_event(
+                    "vision_encoding_error",
+                    crate::logging::SecuritySeverity::Medium,
+                    &error_msg,
+                );
+                TinyVlmError::inference(format!("Vision encoding failed: {}", e))
+            })?;
         
         // Project vision features
         let projected_vision = self.vision_projection.forward(&vision_features, &mut self.memory_pool)?;

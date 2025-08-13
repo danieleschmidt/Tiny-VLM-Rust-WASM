@@ -5,7 +5,7 @@
 use tiny_vlm::{prelude::*, FastVLM, ModelConfig, InferenceConfig};
 use std::time::Instant;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Tiny-VLM Basic Inference Example");
     println!("===================================");
 
