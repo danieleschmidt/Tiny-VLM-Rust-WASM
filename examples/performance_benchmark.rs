@@ -68,7 +68,7 @@ fn main() -> Result<()> {
     
     let avg_time = inference_times.iter().sum::<f32>() / inference_times.len() as f32;
     let min_time = inference_times.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-    let max_time = inference_times.iter().fold(0.0, |a, &b| a.max(b));
+    let max_time = inference_times.iter().fold(0.0f32, |a, &b| a.max(b));
     
     println!("📊 Warm inference stats ({} iterations):", num_iterations);
     println!("   Average: {:.2}ms", avg_time);

@@ -16,10 +16,12 @@ pub mod memory;
 pub mod models;
 pub mod monitoring;
 pub mod optimization;
+pub mod recovery;
 pub mod scaling;
 pub mod security;
 pub mod simd;
 pub mod text;
+pub mod threat_intelligence;
 pub mod validation;
 pub mod vision;
 
@@ -38,6 +40,7 @@ pub mod prelude {
     pub use crate::logging::{LogConfig, LogFormat, PerformanceTimer};
     pub use crate::memory::{MemoryPool, Tensor, TensorShape};
     pub use crate::optimization::{AdaptiveCache, CacheConfig, LoadBalancer, LoadBalancingStrategy};
+    pub use crate::recovery::{CircuitBreaker, RecoveryManager, RecoveryStats, RetryPolicy};
     pub use crate::text::{Tokenizer, TokenizerConfig};
     pub use crate::validation::{ValidationResult, validate_image_data, validate_text_input};
     pub use crate::vision::{ImageProcessor, VisionEncoder};
