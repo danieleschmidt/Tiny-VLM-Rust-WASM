@@ -334,6 +334,7 @@ fn benchmark_mobile_targets(c: &mut Criterion) {
         max_length: 50, // Shorter responses for mobile
         temperature: 0.8,
         top_p: 0.9,
+        top_k: 40, // Top-k sampling for mobile
         deterministic: false,
         memory_limit_mb: 50, // Conservative memory limit
     };
