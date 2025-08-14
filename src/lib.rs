@@ -27,6 +27,8 @@ pub mod vision;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 
 pub use error::{Result, TinyVlmError};
 pub use models::{FastVLM, InferenceConfig, ModelConfig};
