@@ -122,8 +122,17 @@ impl FastVLM {
         // Initialize language model head
         let lm_head = LanguageModelHead::new(config.hidden_dim, config.text_config.vocab_size)?;
 
-        // Initialize memory pool (default 100MB)
-        let memory_pool = MemoryPool::new(25_000_000); // 100MB for f32
+        // Initialize adaptive memory pool with intelligent sizing
+        let adaptive_memory_size = calculate_optimal_memory_size(&config);
+        let memory_pool = MemoryPool::new(adaptive_memory_size);
+        
+        #[cfg(feature = "std")]
+        crate::logging::log_memory_event(
+            "memory_pool_initialized",
+            adaptive_memory_size as f64 / (1024.0 * 1024.0),
+            0.0, // Initial allocation
+            0.0, // No fragmentation yet
+        );
 
         Ok(Self {
             config,
@@ -155,29 +164,97 @@ impl FastVLM {
     /// Perform inference on an image with a text prompt with robust error handling
     pub fn infer(&mut self, image_data: &[u8], prompt: &str, config: InferenceConfig) -> Result<String> {
         // Enhanced validation with security checks
-        crate::validation::validate_image_data(image_data).into_result()?;
-        crate::validation::validate_text_input(prompt).into_result()?;
-        crate::validation::validate_inference_config(&config).into_result()?;
+        crate::validation::validate_image_data(image_data).into_result()
+            .map_err(|e| {
+                let context = crate::error::ErrorContext {
+                    #[cfg(feature = "std")]
+                    timestamp: std::time::Instant::now(),
+                    operation: "image_validation".to_string(),
+                    context: [("image_size".to_string(), image_data.len().to_string())].iter().cloned().collect(),
+                    recovery_suggestions: e.recovery_suggestions(),
+                    is_retryable: e.is_retryable(),
+                    severity: e.severity(),
+                };
+                e.with_context(context)
+            })?;
+            
+        crate::validation::validate_text_input(prompt).into_result()
+            .map_err(|e| {
+                let context = crate::error::ErrorContext {
+                    #[cfg(feature = "std")]
+                    timestamp: std::time::Instant::now(),
+                    operation: "text_validation".to_string(),
+                    context: [("text_length".to_string(), prompt.len().to_string())].iter().cloned().collect(),
+                    recovery_suggestions: e.recovery_suggestions(),
+                    is_retryable: e.is_retryable(),
+                    severity: e.severity(),
+                };
+                e.with_context(context)
+            })?;
+            
+        crate::validation::validate_inference_config(&config).into_result()
+            .map_err(|e| {
+                let context = crate::error::ErrorContext {
+                    #[cfg(feature = "std")]
+                    timestamp: std::time::Instant::now(),
+                    operation: "config_validation".to_string(),
+                    context: [("max_length".to_string(), config.max_length.to_string())].iter().cloned().collect(),
+                    recovery_suggestions: e.recovery_suggestions(),
+                    is_retryable: e.is_retryable(),
+                    severity: e.severity(),
+                };
+                e.with_context(context)
+            })?;
 
         #[cfg(feature = "std")]
         let _timer = crate::logging::PerformanceTimer::new("model_inference");
 
-        // Security pre-processing: basic validation
-        if prompt.len() > 10000 {
-            return Err(TinyVlmError::invalid_input("Prompt too long"));
+        // Performance optimization: Dynamic prompt length based on memory availability
+        let dynamic_limit = self.calculate_dynamic_prompt_limit();
+        if prompt.len() > dynamic_limit {
+            #[cfg(feature = "std")]
+            crate::logging::log_security_event(
+                "prompt_length_exceeded",
+                crate::logging::SecuritySeverity::Medium,
+                &format!("Prompt length {} exceeds dynamic limit {}", prompt.len(), dynamic_limit)
+            );
+            return Err(TinyVlmError::invalid_input(
+                format!("Prompt too long: {} > {} (dynamic limit)", prompt.len(), dynamic_limit)
+            ));
         }
 
         // Process image with error recovery
         let image_tensor = self.image_processor.preprocess(image_data)
             .map_err(|e| {
                 #[cfg(feature = "std")]
-                let error_msg = format!("Failed to process image: {}", e);
-                crate::logging::log_security_event(
-                    "image_processing_error",
-                    crate::logging::SecuritySeverity::Medium,
-                    &error_msg,
-                );
-                TinyVlmError::image_processing(format!("Failed to preprocess image: {}", e))
+                {
+                    let error_msg = format!("Failed to process image: {}", e);
+                    crate::logging::log_security_event(
+                        "image_processing_error",
+                        crate::logging::SecuritySeverity::Medium,
+                        &error_msg,
+                    );
+                }
+                {
+                    let error = TinyVlmError::image_processing(format!("Failed to preprocess image: {}", e));
+                    let context = crate::error::ErrorContext {
+                        #[cfg(feature = "std")]
+                        timestamp: std::time::Instant::now(),
+                        operation: "image_preprocessing".to_string(),
+                        context: [
+                            ("image_size".to_string(), image_data.len().to_string()),
+                            ("expected_dimensions".to_string(), "224x224x3".to_string()),
+                        ].iter().cloned().collect(),
+                        recovery_suggestions: vec![
+                            "Resize image to 224x224 pixels".to_string(),
+                            "Convert image to RGB format".to_string(),
+                            "Check image is not corrupted".to_string(),
+                        ],
+                        is_retryable: false,
+                        severity: crate::error::ErrorSeverity::Medium,
+                    };
+                    error.with_context(context)
+                }
             })?;
         
         // Encode image with circuit breaker protection
@@ -256,9 +333,37 @@ impl FastVLM {
         self.memory_pool.memory_usage()
     }
 
-    /// Clear memory pool to reduce memory usage
+    /// Calculate dynamic prompt length limit based on available memory
+    fn calculate_dynamic_prompt_limit(&self) -> usize {
+        let stats = self.memory_pool.memory_usage();
+        let available_memory = stats.available_memory;
+        
+        // Reserve 20% of available memory for prompt processing
+        let prompt_memory_budget = (available_memory as f64 * 0.2) as usize;
+        
+        // Estimate ~4 bytes per character for processing (including embeddings)
+        let char_limit = prompt_memory_budget / 4;
+        
+        // Clamp between reasonable limits
+        char_limit.max(1000).min(50000) // Min 1K chars, max 50K chars
+    }
+
+    /// Perform memory compaction with performance tracking
     pub fn compact_memory(&mut self) {
+        #[cfg(feature = "std")]
+        let _timer = crate::logging::PerformanceTimer::new("memory_compaction");
+        
+        let stats_before = self.memory_pool.memory_usage();
         self.memory_pool.compact();
+        let stats_after = self.memory_pool.memory_usage();
+        
+        #[cfg(feature = "std")]
+        crate::logging::log_memory_event(
+            "memory_compacted",
+            stats_after.total_memory as f64 / (1024.0 * 1024.0),
+            stats_after.allocated_memory as f64 / (1024.0 * 1024.0),
+            stats_after.fragmentation as f64,
+        );
     }
 
     // Private methods
@@ -663,6 +768,26 @@ impl LayerNorm {
         output.data_mut().copy_from_slice(input.data());
         Ok(output)
     }
+}
+
+/// Calculate optimal memory pool size based on model configuration
+fn calculate_optimal_memory_size(config: &ModelConfig) -> usize {
+    // Base memory for small models
+    let base_memory = 50_000_000; // 50MB base
+
+    // Scale based on model dimensions
+    let vision_factor = (config.vision_dim as f64 / 768.0).max(1.0);
+    let text_factor = (config.text_dim as f64 / 768.0).max(1.0);
+    let hidden_factor = (config.hidden_dim as f64 / 768.0).max(1.0);
+    
+    // Calculate scaling multiplier
+    let scale_factor = (vision_factor * text_factor * hidden_factor).sqrt();
+    
+    // Apply scaling with reasonable limits
+    let scaled_memory = (base_memory as f64 * scale_factor) as usize;
+    
+    // Clamp between 25MB and 500MB
+    scaled_memory.max(25_000_000).min(500_000_000)
 }
 
 #[cfg(test)]
