@@ -190,42 +190,28 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Create a simple test image (PNG format)
+/// Create a simple test image (RGB format)
 fn create_test_image() -> Vec<u8> {
-    // Create a minimal valid PNG image (8x8 pixels, grayscale)
-    let mut png_data = Vec::new();
+    // Create 224x224x3 RGB test image data (expected by the model)
+    let width = 224;
+    let height = 224;
+    let channels = 3;
     
-    // PNG signature
-    png_data.extend_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    let mut rgb_data = Vec::with_capacity(width * height * channels);
     
-    // IHDR chunk (8x8 grayscale image)
-    png_data.extend_from_slice(&[
-        0x00, 0x00, 0x00, 0x0D, // Chunk length
-        0x49, 0x48, 0x44, 0x52, // "IHDR"
-        0x00, 0x00, 0x00, 0x08, // Width: 8
-        0x00, 0x00, 0x00, 0x08, // Height: 8
-        0x08,                   // Bit depth: 8
-        0x00,                   // Color type: grayscale
-        0x00,                   // Compression: deflate
-        0x00,                   // Filter: adaptive
-        0x00,                   // Interlace: none
-        0x17, 0x5D, 0x3C, 0x23, // CRC
-    ]);
+    // Create a simple pattern: gradient with some noise
+    for y in 0..height {
+        for x in 0..width {
+            // Create a gradient pattern
+            let r = ((x * 255) / width) as u8;
+            let g = ((y * 255) / height) as u8; 
+            let b = (((x + y) * 255) / (width + height)) as u8;
+            
+            rgb_data.push(r);
+            rgb_data.push(g);
+            rgb_data.push(b);
+        }
+    }
     
-    // IDAT chunk (compressed image data)
-    png_data.extend_from_slice(&[
-        0x00, 0x00, 0x00, 0x0C, // Chunk length
-        0x49, 0x44, 0x41, 0x54, // "IDAT"
-        0x78, 0x9C, 0x63, 0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01,
-        0xE5, 0x48, 0xDE, 0xCA, // Compressed data + CRC
-    ]);
-    
-    // IEND chunk
-    png_data.extend_from_slice(&[
-        0x00, 0x00, 0x00, 0x00, // Chunk length
-        0x49, 0x45, 0x4E, 0x44, // "IEND"
-        0xAE, 0x42, 0x60, 0x82, // CRC
-    ]);
-    
-    png_data
+    rgb_data
 }

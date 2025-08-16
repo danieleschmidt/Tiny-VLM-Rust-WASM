@@ -1,4 +1,4 @@
-//! Error types for Tiny-VLM
+//! Error types for Tiny-VLM with enhanced context and recovery
 
 use thiserror::Error;
 
@@ -7,6 +7,51 @@ use wasm_bindgen::JsValue;
 
 /// Result type alias for Tiny-VLM operations
 pub type Result<T> = core::result::Result<T, TinyVlmError>;
+
+/// Enhanced error context with recovery suggestions
+#[derive(Debug, Clone)]
+pub struct ErrorContext {
+    /// Timestamp when error occurred
+    #[cfg(feature = "std")]
+    pub timestamp: std::time::Instant,
+    /// Operation that was being performed
+    pub operation: String,
+    /// Additional context data
+    pub context: std::collections::HashMap<String, String>,
+    /// Suggested recovery actions
+    pub recovery_suggestions: Vec<String>,
+    /// Whether this error is retryable
+    pub is_retryable: bool,
+    /// Error severity level
+    pub severity: ErrorSeverity,
+}
+
+impl Default for ErrorContext {
+    fn default() -> Self {
+        Self {
+            #[cfg(feature = "std")]
+            timestamp: std::time::Instant::now(),
+            operation: "unknown".to_string(),
+            context: std::collections::HashMap::new(),
+            recovery_suggestions: Vec::new(),
+            is_retryable: false,
+            severity: ErrorSeverity::Medium,
+        }
+    }
+}
+
+/// Error severity levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorSeverity {
+    /// Low severity - informational errors
+    Low,
+    /// Medium severity - expected operational errors
+    Medium,
+    /// High severity - significant operational errors
+    High,
+    /// Critical severity - system-threatening errors
+    Critical,
+}
 
 /// Error types for Tiny-VLM operations
 #[derive(Error, Debug)]
@@ -110,6 +155,129 @@ impl TinyVlmError {
     #[cfg(feature = "std")]
     pub fn serialization(msg: impl Into<String>) -> Self {
         Self::SerializationError(msg.into())
+    }
+
+    /// Create an error with enhanced context
+    pub fn with_context(self, context: ErrorContext) -> Self {
+        #[cfg(feature = "std")]
+        {
+            // Log the error with context for debugging
+            crate::logging::log_security_event(
+                "error_with_context",
+                match context.severity {
+                    ErrorSeverity::Low => crate::logging::SecuritySeverity::Low,
+                    ErrorSeverity::Medium => crate::logging::SecuritySeverity::Medium,
+                    ErrorSeverity::High => crate::logging::SecuritySeverity::High,
+                    ErrorSeverity::Critical => crate::logging::SecuritySeverity::Critical,
+                },
+                &format!("Error in operation '{}': {}", context.operation, self),
+            );
+        }
+        self
+    }
+
+    /// Get error severity level
+    pub fn severity(&self) -> ErrorSeverity {
+        match self {
+            Self::ImageProcessing(_) => ErrorSeverity::Medium,
+            Self::TextProcessing(_) => ErrorSeverity::Medium,
+            Self::ModelLoading(_) => ErrorSeverity::High,
+            Self::Inference(_) => ErrorSeverity::Medium,
+            Self::Memory(_) => ErrorSeverity::High,
+            Self::InvalidInput(_) => ErrorSeverity::Low,
+            Self::Config(_) => ErrorSeverity::High,
+            Self::Simd(_) => ErrorSeverity::Low,
+            #[cfg(feature = "wasm")]
+            Self::Wasm(_) => ErrorSeverity::Medium,
+            #[cfg(feature = "std")]
+            Self::Io(_) => ErrorSeverity::Medium,
+            #[cfg(feature = "std")]
+            Self::SerializationError(_) => ErrorSeverity::Medium,
+        }
+    }
+
+    /// Check if this error is retryable
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::ImageProcessing(_) => false, // Usually input format issues
+            Self::TextProcessing(_) => false,  // Usually input format issues
+            Self::ModelLoading(_) => true,     // Could be transient I/O issue
+            Self::Inference(_) => true,        // Could be temporary resource issue
+            Self::Memory(_) => true,           // Could free up memory and retry
+            Self::InvalidInput(_) => false,    // Invalid input won't change
+            Self::Config(_) => false,          // Configuration issues need fixing
+            Self::Simd(_) => false,            // Architecture issues
+            #[cfg(feature = "wasm")]
+            Self::Wasm(_) => true,             // Could be temporary WASM issue
+            #[cfg(feature = "std")]
+            Self::Io(_) => true,               // I/O operations can be retried
+            #[cfg(feature = "std")]
+            Self::SerializationError(_) => false, // Data format issues
+        }
+    }
+
+    /// Get recovery suggestions for this error
+    pub fn recovery_suggestions(&self) -> Vec<String> {
+        match self {
+            Self::ImageProcessing(_) => vec![
+                "Verify image format is supported (PNG, JPEG, WebP, GIF)".to_string(),
+                "Check image size is within limits (10MB max)".to_string(),
+                "Ensure image dimensions are valid".to_string(),
+            ],
+            Self::TextProcessing(_) => vec![
+                "Check text length is within limits (1MB max)".to_string(),
+                "Verify text contains valid UTF-8 characters".to_string(),
+                "Remove null bytes or control characters".to_string(),
+            ],
+            Self::ModelLoading(_) => vec![
+                "Verify model file exists and is accessible".to_string(),
+                "Check available disk space and memory".to_string(),
+                "Try loading model again after a brief delay".to_string(),
+            ],
+            Self::Inference(_) => vec![
+                "Reduce batch size or input length".to_string(),
+                "Free up system memory".to_string(),
+                "Try inference again with simplified input".to_string(),
+            ],
+            Self::Memory(_) => vec![
+                "Reduce memory usage by compacting memory pool".to_string(),
+                "Lower memory limits in configuration".to_string(),
+                "Process smaller batches".to_string(),
+            ],
+            Self::InvalidInput(_) => vec![
+                "Validate input data before processing".to_string(),
+                "Check input format matches expected schema".to_string(),
+                "Use input validation functions".to_string(),
+            ],
+            Self::Config(_) => vec![
+                "Review configuration parameters".to_string(),
+                "Check configuration file syntax".to_string(),
+                "Use default configuration as fallback".to_string(),
+            ],
+            Self::Simd(_) => vec![
+                "Check CPU architecture supports required SIMD instructions".to_string(),
+                "Fall back to scalar implementations".to_string(),
+                "Update processor microcode if available".to_string(),
+            ],
+            #[cfg(feature = "wasm")]
+            Self::Wasm(_) => vec![
+                "Check WebAssembly runtime supports required features".to_string(),
+                "Verify browser/runtime version compatibility".to_string(),
+                "Try reloading the WASM module".to_string(),
+            ],
+            #[cfg(feature = "std")]
+            Self::Io(_) => vec![
+                "Check file permissions and accessibility".to_string(),
+                "Verify sufficient disk space".to_string(),
+                "Retry the operation after a brief delay".to_string(),
+            ],
+            #[cfg(feature = "std")]
+            Self::SerializationError(_) => vec![
+                "Verify data format matches expected schema".to_string(),
+                "Check for data corruption".to_string(),
+                "Try alternative serialization format".to_string(),
+            ],
+        }
     }
 }
 
