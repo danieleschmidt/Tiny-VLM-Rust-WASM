@@ -88,6 +88,11 @@ pub enum TinyVlmError {
     #[error("SIMD operation error: {0}")]
     Simd(String),
 
+    /// GPU operation errors
+    #[cfg(feature = "gpu")]
+    #[error("GPU operation error: {0}")]
+    Gpu(String),
+
     /// WebAssembly specific errors
     #[cfg(feature = "wasm")]
     #[error("WebAssembly error: {0}")]
@@ -145,6 +150,12 @@ impl TinyVlmError {
         Self::Simd(msg.into())
     }
 
+    /// Create a GPU error
+    #[cfg(feature = "gpu")]
+    pub fn gpu(msg: impl Into<String>) -> Self {
+        Self::Gpu(msg.into())
+    }
+
     /// Create a WebAssembly error
     #[cfg(feature = "wasm")]
     pub fn wasm(msg: impl Into<String>) -> Self {
@@ -187,6 +198,8 @@ impl TinyVlmError {
             Self::InvalidInput(_) => ErrorSeverity::Low,
             Self::Config(_) => ErrorSeverity::High,
             Self::Simd(_) => ErrorSeverity::Low,
+            #[cfg(feature = "gpu")]
+            Self::Gpu(_) => ErrorSeverity::Medium,
             #[cfg(feature = "wasm")]
             Self::Wasm(_) => ErrorSeverity::Medium,
             #[cfg(feature = "std")]
@@ -207,6 +220,8 @@ impl TinyVlmError {
             Self::InvalidInput(_) => false,    // Invalid input won't change
             Self::Config(_) => false,          // Configuration issues need fixing
             Self::Simd(_) => false,            // Architecture issues
+            #[cfg(feature = "gpu")]
+            Self::Gpu(_) => true,              // GPU driver/memory issues can be retried
             #[cfg(feature = "wasm")]
             Self::Wasm(_) => true,             // Could be temporary WASM issue
             #[cfg(feature = "std")]
@@ -258,6 +273,13 @@ impl TinyVlmError {
                 "Check CPU architecture supports required SIMD instructions".to_string(),
                 "Fall back to scalar implementations".to_string(),
                 "Update processor microcode if available".to_string(),
+            ],
+            #[cfg(feature = "gpu")]
+            Self::Gpu(_) => vec![
+                "Check GPU drivers are up to date".to_string(),
+                "Verify sufficient GPU memory available".to_string(),
+                "Try reducing GPU batch size".to_string(),
+                "Fall back to CPU computation".to_string(),
             ],
             #[cfg(feature = "wasm")]
             Self::Wasm(_) => vec![

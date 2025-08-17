@@ -99,6 +99,8 @@ impl MonitoringSystem {
                 TinyVlmError::Simd(_) => "simd",
                 TinyVlmError::ModelLoading(_) => "model_loading",
                 TinyVlmError::InvalidInput(_) => "invalid_input",
+                #[cfg(feature = "gpu")]
+                TinyVlmError::Gpu(_) => "gpu",
                 #[cfg(feature = "wasm")]
                 TinyVlmError::Wasm(_) => "wasm",
                 #[cfg(feature = "std")]

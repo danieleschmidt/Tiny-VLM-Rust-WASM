@@ -288,37 +288,22 @@ impl Tokenizer {
             return Ok(Vec::new());
         }
 
-        // Start with character-level tokens
-        let mut tokens: VecDeque<String> = word.chars().map(|c| c.to_string()).collect();
-
-        // Apply BPE merges
-        for (first, second) in &self.merges {
-            let mut i = 0;
-            while i < tokens.len().saturating_sub(1) {
-                if tokens[i] == *first && tokens[i + 1] == *second {
-                    let merged = format!("{}{}", first, second);
-                    tokens[i] = merged;
-                    tokens.remove(i + 1);
-                } else {
-                    i += 1;
-                }
-            }
-        }
-
-        // Convert tokens to IDs
+        // Simplified tokenization - just split into characters and look up in vocab
         let mut token_ids = Vec::new();
-        for token in tokens {
-            if let Some(&id) = self.vocab.get(&token) {
-                token_ids.push(id);
-            } else {
-                // Try to find the token with ## prefix for subwords
-                let subword_token = format!("##{}", token);
-                if let Some(&id) = self.vocab.get(&subword_token) {
-                    token_ids.push(id);
-                } else {
-                    token_ids.push(self.config.unk_token);
-                }
-            }
+        
+        // Try to find the whole word first
+        if let Some(&id) = self.vocab.get(word) {
+            token_ids.push(id);
+            return Ok(token_ids);
+        }
+        
+        // Fall back to character-level tokenization
+        for ch in word.chars() {
+            let ch_str = ch.to_string();
+            let token_id = self.vocab.get(&ch_str)
+                .copied()
+                .unwrap_or(self.config.unk_token);
+            token_ids.push(token_id);
         }
 
         Ok(token_ids)
