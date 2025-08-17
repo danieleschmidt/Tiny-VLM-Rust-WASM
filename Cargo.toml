@@ -17,6 +17,7 @@ default = ["std"]
 std = ["chrono", "rand", "tempfile", "log", "tracing", "tracing-subscriber", "num_cpus"]
 simd = []
 native = ["std"]
+gpu = ["std"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "console_error_panic_hook", "js-sys", "web-sys"]
 
 [dependencies]
