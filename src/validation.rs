@@ -24,8 +24,8 @@ pub const MAX_SEQUENCE_LENGTH: usize = 32768;
 /// Maximum allowed batch size
 pub const MAX_BATCH_SIZE: usize = 1024;
 
-/// Maximum allowed memory limit (16GB)
-pub const MAX_MEMORY_LIMIT_BYTES: usize = 16 * 1024 * 1024 * 1024;
+/// Maximum allowed memory limit (2GB) - reduced to prevent overflow on 32-bit systems
+pub const MAX_MEMORY_LIMIT_BYTES: usize = 2 * 1024 * 1024 * 1024;
 
 /// Validation result with detailed error information
 #[derive(Debug, Clone)]

@@ -122,7 +122,7 @@ impl FastVLM {
         // Initialize language model head
         let lm_head = LanguageModelHead::new(config.hidden_dim, config.text_config.vocab_size)?;
 
-        // Initialize adaptive memory pool with intelligent sizing
+        // Initialize adaptive memory pool with intelligent sizing (increased for robustness)
         let adaptive_memory_size = calculate_optimal_memory_size(&config);
         let memory_pool = MemoryPool::new(adaptive_memory_size);
         
@@ -764,24 +764,24 @@ impl LayerNorm {
     }
 }
 
-/// Calculate optimal memory pool size based on model configuration
+/// Calculate optimal memory pool size based on model configuration with generation-aware scaling
 fn calculate_optimal_memory_size(config: &ModelConfig) -> usize {
-    // Base memory for small models - increased for robust testing
-    let base_memory = 200_000_000; // 200MB base (increased from 50MB)
+    // Base memory increased significantly for Generation 3 scaling
+    let base_memory = 500_000_000; // 500MB base for better performance
 
-    // Scale based on model dimensions
+    // Scale based on model dimensions with more aggressive factors
     let vision_factor = (config.vision_dim as f64 / 768.0).max(1.0);
     let text_factor = (config.text_dim as f64 / 768.0).max(1.0);
     let hidden_factor = (config.hidden_dim as f64 / 768.0).max(1.0);
     
-    // Calculate scaling multiplier
-    let scale_factor = (vision_factor * text_factor * hidden_factor).sqrt();
+    // Calculate scaling multiplier with buffer for intermediate computations
+    let scale_factor = (vision_factor * text_factor * hidden_factor).sqrt() * 1.5;
     
-    // Apply scaling with reasonable limits
+    // Apply scaling with more generous limits for better performance
     let scaled_memory = (base_memory as f64 * scale_factor) as usize;
     
-    // Clamp between 100MB and 2GB for robust operation
-    scaled_memory.max(100_000_000).min(2_000_000_000)
+    // Clamp between 500MB and 8GB for high-performance operation
+    scaled_memory.max(500_000_000).min(8_000_000_000)
 }
 
 #[cfg(test)]
