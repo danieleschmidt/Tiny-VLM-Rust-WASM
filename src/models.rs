@@ -780,8 +780,8 @@ fn calculate_optimal_memory_size(config: &ModelConfig) -> usize {
     // Apply scaling with more generous limits for better performance
     let scaled_memory = (base_memory as f64 * scale_factor) as usize;
     
-    // Clamp between 500MB and 8GB for high-performance operation
-    scaled_memory.max(500_000_000).min(8_000_000_000)
+    // Clamp between 500MB and 2GB for WASM/native compatibility
+    scaled_memory.max(500_000_000).min(2_000_000_000)
 }
 
 #[cfg(test)]
