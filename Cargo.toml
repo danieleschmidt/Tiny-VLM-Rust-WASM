@@ -66,6 +66,9 @@ num_cpus = { version = "1.16", optional = true }
 # Temporary file handling (dev/test only)
 tempfile = { version = "3.8", optional = true }
 
+# Cryptographic hashing
+blake3 = "1.5"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.4"

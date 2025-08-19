@@ -11,6 +11,7 @@ pub mod data;
 pub mod deployment;
 pub mod error;
 pub mod health;
+pub mod integration_simple;
 pub mod logging;
 pub mod memory;
 pub mod models;
@@ -39,6 +40,7 @@ pub mod prelude {
     pub use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError};
     pub use crate::data::{DataLoader, DataSample, VisionLanguageDataset, DatasetConfig};
     pub use crate::health::{HealthMonitor, HealthReport, HealthStatus};
+    pub use crate::integration_simple::{SimpleVLMService, SimpleInferenceRequest, SimpleInferenceResponse, SimpleServiceConfig};
     pub use crate::logging::{LogConfig, LogFormat, PerformanceTimer};
     pub use crate::memory::{MemoryPool, Tensor, TensorShape};
     pub use crate::optimization::{AdaptiveCache, CacheConfig, LoadBalancer, LoadBalancingStrategy};
