@@ -10,10 +10,6 @@
 use crate::{Result, TinyVlmError};
 use std::collections::HashMap;
 
-#[cfg(feature = "std")]
-use std::fs;
-#[cfg(feature = "std")]
-use std::path::Path;
 
 /// Production deployment manager
 pub struct DeploymentManager {
