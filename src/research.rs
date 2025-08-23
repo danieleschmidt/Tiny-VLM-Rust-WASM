@@ -107,6 +107,40 @@ pub struct HeteroscedasticityTest {
     pub is_homoscedastic: bool,
 }
 
+/// Hyperparameter optimization strategies
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum OptimizationStrategy {
+    RandomSearch,
+    GridSearch,
+    BayesianOptimization,
+    EvolutionarySearch,
+}
+
+/// Parameter range specification for optimization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParameterRange {
+    Float { min: f64, max: f64, step: Option<f64> },
+    Integer { min: i64, max: i64 },
+    Categorical { values: Vec<String> },
+}
+
+/// Single hyperparameter optimization trial
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyperparameterTrial {
+    pub parameters: HashMap<String, f64>,
+    pub score: f64,
+    pub iteration: usize,
+}
+
+/// Hyperparameter optimization results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyperparameterResults {
+    pub best_parameters: HashMap<String, f64>,
+    pub best_score: f64,
+    pub trials: Vec<HyperparameterTrial>,
+    pub convergence_data: Vec<f64>,
+}
+
 /// Bayesian analysis results
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BayesianAnalysis {
@@ -788,6 +822,22 @@ impl ResearchFramework {
                 p_value: None,
                 effect_size: None,
                 sample_size: 0,
+                median: 0.0,
+                mode: None,
+                skewness: 0.0,
+                kurtosis: 0.0,
+                percentiles: HashMap::new(),
+                outliers: Vec::new(),
+                normality_test: NormalityTest {
+                    shapiro_wilk_p: None,
+                    anderson_darling_p: None,
+                    is_normal: false,
+                },
+                heteroscedasticity_test: HeteroscedasticityTest {
+                    levene_p: None,
+                    breusch_pagan_p: None,
+                    is_homoscedastic: true,
+                },
             };
         }
 
@@ -811,6 +861,22 @@ impl ResearchFramework {
             p_value: None, // Will be calculated in comparison
             effect_size: None,
             sample_size: data.len(),
+            median: 0.0, // TODO: Calculate actual median
+            mode: None,
+            skewness: 0.0, // TODO: Calculate actual skewness
+            kurtosis: 0.0, // TODO: Calculate actual kurtosis
+            percentiles: HashMap::new(), // TODO: Calculate percentiles
+            outliers: Vec::new(), // TODO: Detect outliers
+            normality_test: NormalityTest {
+                shapiro_wilk_p: None,
+                anderson_darling_p: None,
+                is_normal: false, // TODO: Perform normality tests
+            },
+            heteroscedasticity_test: HeteroscedasticityTest {
+                levene_p: None,
+                breusch_pagan_p: None,
+                is_homoscedastic: true, // TODO: Perform heteroscedasticity tests
+            },
         }
     }
 
@@ -988,6 +1054,111 @@ impl ResearchFramework {
         
         Ok(md)
     }
+
+    // Hyperparameter optimization helper methods
+    fn sample_random_parameters(&self, parameter_space: &HashMap<String, ParameterRange>) -> HashMap<String, f64> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut params = HashMap::new();
+        
+        for (name, range) in parameter_space {
+            let value = match range {
+                ParameterRange::Float { min, max, .. } => rng.gen_range(*min..=*max),
+                ParameterRange::Integer { min, max } => rng.gen_range(*min..=*max) as f64,
+                ParameterRange::Categorical { values } => {
+                    let idx = rng.gen_range(0..values.len());
+                    idx as f64 // Use index as numeric value
+                }
+            };
+            params.insert(name.clone(), value);
+        }
+        
+        params
+    }
+    
+    fn sample_grid_parameters(&self, parameter_space: &HashMap<String, ParameterRange>, iteration: usize, budget: usize) -> HashMap<String, f64> {
+        // Simple grid sampling implementation
+        let mut params = HashMap::new();
+        let grid_size = (budget as f64).powf(1.0 / parameter_space.len() as f64) as usize;
+        let mut current_iteration = iteration;
+        
+        for (name, range) in parameter_space {
+            let step = current_iteration % grid_size;
+            current_iteration /= grid_size;
+            
+            let value = match range {
+                ParameterRange::Float { min, max, .. } => {
+                    let step_size = (max - min) / grid_size as f64;
+                    min + step as f64 * step_size
+                }
+                ParameterRange::Integer { min, max } => {
+                    let step_size = (max - min) / grid_size as i64;
+                    (min + step as i64 * step_size) as f64
+                }
+                ParameterRange::Categorical { values } => {
+                    let idx = step % values.len();
+                    idx as f64
+                }
+            };
+            params.insert(name.clone(), value);
+        }
+        
+        params
+    }
+    
+    fn sample_bayesian_parameters(&self, parameter_space: &HashMap<String, ParameterRange>, _results: &[HyperparameterTrial]) -> HashMap<String, f64> {
+        // Simplified Bayesian optimization - in practice would use GP-based acquisition functions
+        // For now, fall back to random sampling with slight bias toward promising regions
+        self.sample_random_parameters(parameter_space)
+    }
+    
+    fn sample_evolutionary_parameters(&self, parameter_space: &HashMap<String, ParameterRange>, results: &[HyperparameterTrial]) -> HashMap<String, f64> {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        
+        if results.is_empty() {
+            return self.sample_random_parameters(parameter_space);
+        }
+        
+        // Select top 25% of trials as parents
+        let mut sorted_results = results.to_vec();
+        sorted_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        let parent_count = std::cmp::max(1, sorted_results.len() / 4);
+        
+        // Select random parent
+        let parent_idx = rng.gen_range(0..parent_count);
+        let parent = &sorted_results[parent_idx];
+        
+        // Mutate parent parameters
+        let mut params = parent.parameters.clone();
+        for (name, range) in parameter_space {
+            if rng.gen_bool(0.3) { // 30% mutation rate
+                let mutation_strength = 0.1;
+                if let Some(current_val) = params.get_mut(name) {
+                    match range {
+                        ParameterRange::Float { min, max, .. } => {
+                            let noise = rng.gen_range(-mutation_strength..mutation_strength) * (max - min);
+                            *current_val = (*current_val + noise).clamp(*min, *max);
+                        }
+                        ParameterRange::Integer { min, max } => {
+                            let noise = rng.gen_range(-1.0..1.0);
+                            *current_val = (*current_val + noise).clamp(*min as f64, *max as f64);
+                        }
+                        ParameterRange::Categorical { values } => {
+                            *current_val = rng.gen_range(0..values.len()) as f64;
+                        }
+                    }
+                }
+            }
+        }
+        
+        params
+    }
+    
+    fn evaluate_hyperparameters(&mut self, _algorithm: &mut dyn ResearchAlgorithm, _params: &HashMap<String, f64>) -> Result<f64> {
+        // Placeholder implementation - would run actual evaluation
+        Ok(rand::random::<f64>())
+    }
 }
 
 impl Default for ResearchFramework {
@@ -1045,7 +1216,7 @@ impl ResearchAlgorithm for BaselineVLMAlgorithm {
         }
 
         // Simulate baseline VLM processing
-        let output_size = input.shape().total_elements().min(512);
+        let output_size = input.shape().numel().min(512);
         let output: Vec<f32> = (0..output_size).map(|i| (i as f32 * 0.1) % 1.0).collect();
         
         Ok(AlgorithmResult {
@@ -1104,7 +1275,7 @@ impl ResearchAlgorithm for FastVLMAlgorithm {
         }
 
         // Simulate optimized VLM processing
-        let output_size = input.shape().total_elements().min(512);
+        let output_size = input.shape().numel().min(512);
         let output: Vec<f32> = (0..output_size).map(|i| (i as f32 * 0.15) % 1.0).collect();
         
         Ok(AlgorithmResult {

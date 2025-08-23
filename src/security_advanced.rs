@@ -53,7 +53,7 @@ pub enum ThreatLevel {
 pub enum SecurityEvent {
     AnomalousInput {
         request_id: String,
-        anomaly_score: f64,
+        anomaly_score: f32,
         features: Vec<String>,
     },
     RateLimitExceeded {
@@ -73,7 +73,7 @@ pub enum SecurityEvent {
     },
     DataExfiltrationAttempt {
         client_id: String,
-        data_volume_mb: f64,
+        data_volume_mb: f32,
         time_window_minutes: u32,
     },
 }
@@ -116,7 +116,7 @@ impl AdvancedSecurityManager {
     /// Comprehensive security analysis of an inference request
     pub fn analyze_request(&mut self, request: &SecurityRequest) -> Result<SecurityAnalysis> {
         let mut events = Vec::new();
-        let mut threat_score = 0.0;
+        let mut threat_score = 0.0_f32;
         let mut recommendations = Vec::new();
 
         // Check if client is quarantined
@@ -409,10 +409,10 @@ impl AnomalyDetector {
 
     pub fn detect_anomalies(&mut self, request: &SecurityRequest) -> Result<Option<AnomalyResult>> {
         let mut anomalous_features = Vec::new();
-        let mut anomaly_score = 0.0;
+        let mut anomaly_score = 0.0_f32;
 
         // Text length analysis
-        let text_length = request.input_text.len() as f64;
+        let text_length = request.input_text.len() as f32;
         if text_length > 10000.0 {
             anomalous_features.push("Excessive text length".to_string());
             anomaly_score += 0.3;
@@ -436,7 +436,7 @@ impl AnomalyDetector {
 
         if anomaly_score > 0.0 {
             Ok(Some(AnomalyResult {
-                score: anomaly_score.min(1.0),
+                score: anomaly_score.min(1.0_f32),
                 anomalous_features,
             }))
         } else {
@@ -480,7 +480,7 @@ impl BehavioralAnalyzer {
     }
 
     pub fn analyze_behavior(&mut self, request: &SecurityRequest, profile: &mut ClientProfile) -> Result<Option<BehavioralResult>> {
-        let mut risk_score = 0.0;
+        let mut risk_score = 0.0_f32;
         let mut rate_limit_exceeded = false;
         let mut suspicious_geolocation = false;
 
@@ -530,7 +530,7 @@ impl BehavioralAnalyzer {
 
         if risk_score > 0.0 || rate_limit_exceeded || suspicious_geolocation {
             Ok(Some(BehavioralResult {
-                risk_score: risk_score.min(1.0),
+                risk_score: risk_score.min(1.0_f32),
                 rate_limit_exceeded,
                 current_rate,
                 suspicious_geolocation,
@@ -566,7 +566,7 @@ impl ContentScanner {
     }
 
     pub fn scan_content(&self, request: &SecurityRequest) -> Result<Option<ContentScanResult>> {
-        let mut threat_score = 0.0;
+        let mut threat_score = 0.0_f32;
         let mut contains_malicious_patterns = false;
         let mut potential_data_exfiltration = false;
 
@@ -579,7 +579,7 @@ impl ContentScanner {
         }
 
         // Check for potential data exfiltration
-        let data_volume_mb = request.input_text.len() as f64 / (1024.0 * 1024.0);
+        let data_volume_mb = request.input_text.len() as f32 / (1024.0 * 1024.0);
         if data_volume_mb > 10.0 {
             potential_data_exfiltration = true;
             threat_score += 0.3;
@@ -592,7 +592,7 @@ impl ContentScanner {
 
         if threat_score > 0.0 {
             Ok(Some(ContentScanResult {
-                threat_score: threat_score.min(1.0),
+                threat_score: threat_score.min(1.0_f32),
                 contains_malicious_patterns,
                 potential_data_exfiltration,
                 data_volume_mb,
@@ -653,13 +653,13 @@ impl Default for ThreatDatabase {
 /// Result structures
 #[derive(Debug)]
 pub struct AnomalyResult {
-    pub score: f64,
+    pub score: f32,
     pub anomalous_features: Vec<String>,
 }
 
 #[derive(Debug)]
 pub struct BehavioralResult {
-    pub risk_score: f64,
+    pub risk_score: f32,
     pub rate_limit_exceeded: bool,
     pub current_rate: u32,
     pub suspicious_geolocation: bool,
@@ -667,10 +667,10 @@ pub struct BehavioralResult {
 
 #[derive(Debug)]
 pub struct ContentScanResult {
-    pub threat_score: f64,
+    pub threat_score: f32,
     pub contains_malicious_patterns: bool,
     pub potential_data_exfiltration: bool,
-    pub data_volume_mb: f64,
+    pub data_volume_mb: f32,
 }
 
 #[derive(Debug)]
