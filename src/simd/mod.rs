@@ -2,6 +2,7 @@
 //!
 //! Platform-specific SIMD implementations for maximum performance on ARM NEON and x86 AVX2
 
+pub mod advanced;
 pub mod arm_neon;
 pub mod avx2;
 pub mod wasm_simd;

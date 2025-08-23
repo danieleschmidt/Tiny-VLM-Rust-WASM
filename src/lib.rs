@@ -38,7 +38,7 @@ pub mod wasm;
 pub mod gpu;
 
 pub use error::{Result, TinyVlmError};
-pub use models::{FastVLM, InferenceConfig, ModelConfig};
+pub use models::{FastVLM, InferenceConfig, ModelConfig, SimpleTextResult, SimpleImageResult, SimpleVLMResult, BasicPerformanceMetrics};
 pub use memory::{MemoryPool, TensorShape};
 
 /// Default tensor type using f32 precision

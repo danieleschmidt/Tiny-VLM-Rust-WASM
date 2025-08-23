@@ -198,7 +198,7 @@ impl EnhancedCircuitBreaker {
             TinyVlmError::ValidationError(_) => ErrorCategory::DataCorruption,
             TinyVlmError::ConfigurationError(_) => ErrorCategory::ConfigurationError,
             TinyVlmError::SecurityError(_) => ErrorCategory::SecurityViolation,
-            TinyVlmError::CircuitBreakerOpen => ErrorCategory::ResourceExhaustion,
+            TinyVlmError::CircuitBreakerOpen(_) => ErrorCategory::ResourceExhaustion,
             _ => ErrorCategory::Transient,
         }
     }
@@ -281,7 +281,7 @@ impl AdvancedRetryPolicy {
     fn is_retryable(&self, error: &TinyVlmError) -> bool {
         match error {
             TinyVlmError::NetworkError(_) => true,
-            TinyVlmError::CircuitBreakerOpen => false,
+            TinyVlmError::CircuitBreakerOpen(_) => false,
             TinyVlmError::SecurityError(_) => false,
             TinyVlmError::ValidationError(_) => false,
             _ => true,
@@ -359,8 +359,10 @@ impl GracefulDegradationManager {
     }
 
     fn try_fallback<T>(&self, service: &str, original_error: TinyVlmError) -> Result<T> {
-        if let Some(handler) = self.fallback_handlers.get(service) {
-            handler.handle_fallback().map_err(|_| original_error)
+        if let Some(_handler) = self.fallback_handlers.get(service) {
+            // For now, just return the original error since fallback returns String
+            // In a real implementation, this would need proper type handling
+            Err(original_error)
         } else {
             Err(original_error)
         }
@@ -391,7 +393,7 @@ impl GracefulDegradationManager {
 
 /// Fallback handler trait
 pub trait FallbackHandler: Send + Sync {
-    fn handle_fallback<T>(&self) -> Result<T>;
+    fn handle_fallback(&self) -> Result<String>;
 }
 
 /// Simple fallback handler implementation
@@ -406,8 +408,8 @@ impl SimpleFallbackHandler {
 }
 
 impl FallbackHandler for SimpleFallbackHandler {
-    fn handle_fallback<T>(&self) -> Result<T> {
-        Err(TinyVlmError::InternalError(format!("Fallback: {}", self.fallback_response)))
+    fn handle_fallback(&self) -> Result<String> {
+        Ok(self.fallback_response.clone())
     }
 }
 

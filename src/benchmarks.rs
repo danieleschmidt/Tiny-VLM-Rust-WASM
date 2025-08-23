@@ -148,25 +148,29 @@ impl BenchmarkSuite {
         println!("📊 System: {} cores, {:.1}GB RAM", 
             self.system_info.cpu_cores, self.system_info.memory_gb);
 
+        // Pre-filter available hardware targets
+        let available_hardware: Vec<_> = config.hardware_targets
+            .iter()
+            .filter(|&hw| self.is_hardware_available(hw))
+            .collect();
+
         for (op_name, operation) in &mut self.operations {
             println!("🔧 Benchmarking operation: {}", op_name);
             
             for input_size in &config.input_sizes {
                 for &batch_size in &config.batch_sizes {
                     for precision in &config.precision_modes {
-                        for hardware in &config.hardware_targets {
-                            if self.is_hardware_available(hardware) {
-                                let result = self.benchmark_operation(
-                                    operation.as_mut(),
-                                    op_name,
-                                    input_size,
-                                    batch_size,
-                                    precision,
-                                    hardware,
-                                    &config,
-                                )?;
-                                results.push(result);
-                            }
+                        for &hardware in &available_hardware {
+                            let result = self.benchmark_operation(
+                                operation.as_mut(),
+                                op_name,
+                                input_size,
+                                batch_size,
+                                precision,
+                                hardware,
+                                &config,
+                            )?;
+                            results.push(result);
                         }
                     }
                 }
@@ -202,7 +206,7 @@ impl BenchmarkSuite {
         // Create input tensor
         let mut shape = input_size.to_vec();
         shape[0] = batch_size; // Override batch dimension
-        let input = Tensor::zeros(&TensorShape::new(shape.clone()));
+        let input = Tensor::zeros(TensorShape::new(&shape)?)?;
 
         // Warmup phase
         for _ in 0..config.warmup_iterations {
@@ -553,7 +557,7 @@ impl BenchmarkOperation for MatMulBenchmark {
     fn execute(&mut self, input: &Tensor, _precision: &PrecisionMode, _hardware: &HardwareTarget) -> Result<Tensor> {
         // Simulate matrix multiplication
         let output_shape = input.shape().clone();
-        let mut output = crate::memory::Tensor::zeros(&output_shape);
+        let mut output = crate::memory::Tensor::zeros(output_shape)?;
         
         // Simple computation to simulate work
         for i in 0..output.data().len().min(1000) {

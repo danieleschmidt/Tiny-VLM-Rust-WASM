@@ -139,7 +139,7 @@ impl BlockSparseMatMul {
                 // Vectorized inner loop
                 let l = start_k;
                 
-                #[cfg(target_arch = "x86_64")]
+                #[cfg(all(target_arch = "x86_64", feature = "avx2-simd"))]
                 {
                     // AVX2 implementation for inner product
                     if is_x86_feature_detected!("avx2") && end_k - start_k >= 8 {
@@ -158,7 +158,7 @@ impl BlockSparseMatMul {
                     }
                 }
                 
-                #[cfg(target_arch = "aarch64")]
+                #[cfg(all(target_arch = "aarch64", feature = "neon-simd"))]
                 {
                     // NEON implementation
                     if end_k - start_k >= 4 {
@@ -177,7 +177,7 @@ impl BlockSparseMatMul {
                     }
                 }
                 
-                #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+                #[cfg(not(any(all(target_arch = "x86_64", feature = "avx2-simd"), all(target_arch = "aarch64", feature = "neon-simd"))))]
                 {
                     // Scalar implementation for other architectures
                     for inner_k in l..end_k {
@@ -192,7 +192,7 @@ impl BlockSparseMatMul {
         Ok(())
     }
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", feature = "avx2-simd"))]
     #[target_feature(enable = "avx2")]
     unsafe fn simd_inner_product_avx2(
         &self, a_row: &[f32], b_col: &[f32], 
@@ -238,7 +238,7 @@ impl BlockSparseMatMul {
         sum
     }
 
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", feature = "neon-simd"))]
     unsafe fn simd_inner_product_neon(
         &self, a_row: &[f32], b_col: &[f32], 
         len: usize, _k: usize, n: usize
@@ -336,7 +336,7 @@ impl QuantizedInferenceEngine {
         // Vectorized quantization
         let mut i = 0;
         
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", feature = "avx2-simd"))]
         {
             if is_x86_feature_detected!("avx2") {
                 unsafe {
@@ -345,7 +345,7 @@ impl QuantizedInferenceEngine {
             }
         }
         
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(all(target_arch = "aarch64", feature = "neon-simd"))]
         {
             i = unsafe { self.quantize_neon(input, output, scale, zero_point, i) };
         }
@@ -361,7 +361,7 @@ impl QuantizedInferenceEngine {
         Ok(())
     }
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", feature = "avx2-simd"))]
     #[target_feature(enable = "avx2")]
     unsafe fn quantize_avx2(
         &self, input: &[f32], output: &mut [i8],
@@ -398,7 +398,7 @@ impl QuantizedInferenceEngine {
         i
     }
 
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", feature = "neon-simd"))]
     unsafe fn quantize_neon(
         &self, input: &[f32], output: &mut [i8],
         scale: f32, zero_point: i32, start: usize

@@ -107,6 +107,30 @@ pub enum TinyVlmError {
     #[cfg(feature = "std")]
     #[error("Serialization error: {0}")]
     SerializationError(String),
+    
+    /// Internal system errors
+    #[error("Internal error: {0}")]
+    InternalError(String),
+    
+    /// Validation errors
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+    
+    /// Circuit breaker open errors
+    #[error("Circuit breaker is open: {0}")]
+    CircuitBreakerOpen(String),
+    
+    /// Security errors
+    #[error("Security error: {0}")]
+    SecurityError(String),
+    
+    /// Network errors
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
+    /// Configuration errors (alternative name)
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 }
 
 impl TinyVlmError {
@@ -167,6 +191,36 @@ impl TinyVlmError {
     pub fn serialization(msg: impl Into<String>) -> Self {
         Self::SerializationError(msg.into())
     }
+    
+    /// Create an internal error
+    pub fn internal_error(msg: impl Into<String>) -> Self {
+        Self::InternalError(msg.into())
+    }
+    
+    /// Create a validation error
+    pub fn validation_error(msg: impl Into<String>) -> Self {
+        Self::ValidationError(msg.into())
+    }
+    
+    /// Create a circuit breaker error
+    pub fn circuit_breaker_open(msg: impl Into<String>) -> Self {
+        Self::CircuitBreakerOpen(msg.into())
+    }
+    
+    /// Create a security error
+    pub fn security_error(msg: impl Into<String>) -> Self {
+        Self::SecurityError(msg.into())
+    }
+    
+    /// Create a network error
+    pub fn network_error(msg: impl Into<String>) -> Self {
+        Self::NetworkError(msg.into())
+    }
+    
+    /// Create a configuration error (alternative method)
+    pub fn configuration_error(msg: impl Into<String>) -> Self {
+        Self::ConfigurationError(msg.into())
+    }
 
     /// Create an error with enhanced context
     pub fn with_context(self, context: ErrorContext) -> Self {
@@ -206,6 +260,12 @@ impl TinyVlmError {
             Self::Io(_) => ErrorSeverity::Medium,
             #[cfg(feature = "std")]
             Self::SerializationError(_) => ErrorSeverity::Medium,
+            Self::InternalError(_) => ErrorSeverity::High,
+            Self::ValidationError(_) => ErrorSeverity::Low,
+            Self::CircuitBreakerOpen(_) => ErrorSeverity::Medium,
+            Self::SecurityError(_) => ErrorSeverity::Critical,
+            Self::NetworkError(_) => ErrorSeverity::Medium,
+            Self::ConfigurationError(_) => ErrorSeverity::High,
         }
     }
 
@@ -228,6 +288,12 @@ impl TinyVlmError {
             Self::Io(_) => true,               // I/O operations can be retried
             #[cfg(feature = "std")]
             Self::SerializationError(_) => false, // Data format issues
+            Self::InternalError(_) => true,       // Internal errors might be transient
+            Self::ValidationError(_) => false,    // Validation errors need input fixing
+            Self::CircuitBreakerOpen(_) => true,  // Circuit breaker can reset
+            Self::SecurityError(_) => false,      // Security issues need fixing
+            Self::NetworkError(_) => true,        // Network issues are often transient
+            Self::ConfigurationError(_) => false, // Configuration issues need fixing
         }
     }
 
