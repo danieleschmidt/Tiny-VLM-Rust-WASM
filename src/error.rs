@@ -365,6 +365,36 @@ impl TinyVlmError {
                 "Check for data corruption".to_string(),
                 "Try alternative serialization format".to_string(),
             ],
+            Self::InternalError(_) => vec![
+                "Report this issue to support".to_string(),
+                "Restart the application".to_string(),
+                "Check system logs for more details".to_string(),
+            ],
+            Self::ValidationError(_) => vec![
+                "Check input data format and constraints".to_string(),
+                "Verify data integrity".to_string(),
+                "Use validation functions before processing".to_string(),
+            ],
+            Self::CircuitBreakerOpen(_) => vec![
+                "Wait for circuit breaker to reset".to_string(),
+                "Check underlying service health".to_string(),
+                "Reduce request rate temporarily".to_string(),
+            ],
+            Self::SecurityError(_) => vec![
+                "Review security configuration".to_string(),
+                "Check access permissions".to_string(),
+                "Verify authentication credentials".to_string(),
+            ],
+            Self::NetworkError(_) => vec![
+                "Check network connectivity".to_string(),
+                "Verify network configuration".to_string(),
+                "Retry with exponential backoff".to_string(),
+            ],
+            Self::ConfigurationError(_) => vec![
+                "Review configuration parameters".to_string(),
+                "Check configuration file syntax".to_string(),
+                "Use default configuration as fallback".to_string(),
+            ],
         }
     }
 }

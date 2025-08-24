@@ -99,6 +99,12 @@ impl MonitoringSystem {
                 TinyVlmError::Simd(_) => "simd",
                 TinyVlmError::ModelLoading(_) => "model_loading",
                 TinyVlmError::InvalidInput(_) => "invalid_input",
+                TinyVlmError::InternalError(_) => "internal",
+                TinyVlmError::ValidationError(_) => "validation",
+                TinyVlmError::CircuitBreakerOpen(_) => "circuit_breaker",
+                TinyVlmError::SecurityError(_) => "security",
+                TinyVlmError::NetworkError(_) => "network",
+                TinyVlmError::ConfigurationError(_) => "configuration",
                 #[cfg(feature = "gpu")]
                 TinyVlmError::Gpu(_) => "gpu",
                 #[cfg(feature = "wasm")]

@@ -27,6 +27,7 @@ pub mod scaling_advanced;
 pub mod security;
 pub mod security_advanced;
 pub mod simd;
+pub mod simple_vlm;
 pub mod text;
 pub mod threat_intelligence;
 pub mod validation;
@@ -47,6 +48,7 @@ pub type Tensor = memory::Tensor<f32>;
 /// Re-export commonly used types
 pub mod prelude {
     pub use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError, Tensor};
+    pub use crate::simple_vlm::{SimpleVLM, SimpleVLMConfig, SimplePerformanceMetrics};
     pub use crate::benchmarks::{BenchmarkSuite, BenchmarkConfig, BenchmarkOperation, BenchmarkResult, BenchmarkReport};
     pub use crate::data::{DataLoader, DataSample, VisionLanguageDataset, DatasetConfig};
     pub use crate::health::{HealthMonitor, HealthReport};
