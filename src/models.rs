@@ -161,6 +161,11 @@ impl FastVLM {
         Ok(model)
     }
 
+    /// Simple inference method for Generation 1
+    pub fn simple_infer(&mut self, image_data: &[u8], prompt: &str) -> Result<String> {
+        self.infer(image_data, prompt, InferenceConfig::default())
+    }
+
     /// Perform inference on an image with a text prompt with robust error handling
     pub fn infer(&mut self, image_data: &[u8], prompt: &str, config: InferenceConfig) -> Result<String> {
         // Enhanced validation with security checks
@@ -526,6 +531,106 @@ impl FastVLM {
         // Fallback to last valid token
         Ok((probabilities.len() - 1) as u32)
     }
+    
+    // ===== GENERATION 1: BASIC FUNCTIONALITY =====
+    
+    /// Initialize minimal model for basic functionality
+    pub fn init_minimal(&mut self) -> Result<()> {
+        // For Generation 1, just validate components are ready
+        if self.config.vision_dim == 0 || self.config.text_dim == 0 {
+            return Err(TinyVlmError::invalid_input("Invalid model dimensions"));
+        }
+        
+        Ok(())
+    }
+    
+    /// Simple text processing for basic functionality
+    pub fn process_text_simple(&mut self, text: &str) -> Result<SimpleTextResult> {
+        #[cfg(feature = "std")]
+        let start_time = std::time::Instant::now();
+        
+        // Basic text tokenization
+        let tokens = self.tokenizer.encode(text)?;
+        
+        #[cfg(feature = "std")]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        
+        #[cfg(feature = "std")]
+        let latency = start_time.elapsed().as_millis() as f32;
+        #[cfg(not(feature = "std"))]
+        let latency = 10.0; // Fixed value for no_std
+        
+        Ok(SimpleTextResult {
+            output_tokens: tokens,
+            latency_ms: latency,
+        })
+    }
+    
+    /// Simple image processing (simulated for Generation 1)
+    pub fn process_image_simple(&mut self, width: u32, height: u32) -> Result<SimpleImageResult> {
+        #[cfg(feature = "std")]
+        let start_time = std::time::Instant::now();
+        
+        // Simulate basic image processing
+        let features_len = (width * height / 16) as usize; // Simulated feature extraction
+        
+        #[cfg(feature = "std")]
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        
+        #[cfg(feature = "std")]
+        let latency = start_time.elapsed().as_millis() as f32;
+        #[cfg(not(feature = "std"))]
+        let latency = 15.0; // Fixed value for no_std
+        
+        Ok(SimpleImageResult {
+            feature_dims: vec![features_len / 4, 4], // Simulated 2D features
+            latency_ms: latency,
+        })
+    }
+    
+    /// Simple VLM inference combining text and image
+    pub fn infer_simple(&mut self, text: &str, image_dims: Option<(u32, u32)>) -> Result<SimpleVLMResult> {
+        #[cfg(feature = "std")]
+        let start_time = std::time::Instant::now();
+        
+        // Process text
+        let text_result = self.process_text_simple(text)?;
+        
+        // Process image if provided
+        let image_latency = if let Some((w, h)) = image_dims {
+            let img_result = self.process_image_simple(w, h)?;
+            img_result.latency_ms
+        } else {
+            0.0
+        };
+        
+        // Generate basic response (simulated)
+        let response = format!("Generated response for: '{}'", text);
+        
+        #[cfg(feature = "std")]
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        
+        #[cfg(feature = "std")]
+        let total_latency = start_time.elapsed().as_millis() as f32;
+        #[cfg(not(feature = "std"))]
+        let total_latency = 45.0; // Fixed total for no_std
+        
+        Ok(SimpleVLMResult {
+            text_output: response,
+            total_latency_ms: total_latency,
+            text_latency_ms: text_result.latency_ms,
+            image_latency_ms: image_latency,
+        })
+    }
+    
+    /// Get basic performance metrics
+    pub fn get_performance_metrics(&self) -> BasicPerformanceMetrics {
+        BasicPerformanceMetrics {
+            total_inferences: 1, // Simulated for Generation 1
+            avg_latency_ms: 45.0, // Simulated average
+            memory_usage_mb: 128.0, // Simulated memory usage
+        }
+    }
 }
 
 /// Projection layer for feature transformation
@@ -763,96 +868,6 @@ impl LayerNorm {
         Ok(output)
     }
 
-    // ===== GENERATION 1: BASIC FUNCTIONALITY =====
-    
-    /// Initialize minimal model for basic functionality
-    pub fn init_minimal(&mut self) -> Result<()> {
-        println!("🔧 Initializing minimal FastVLM model...");
-        
-        // For Generation 1, just validate components are ready
-        if self.config.vision_dim == 0 || self.config.text_dim == 0 {
-            return Err(TinyVlmError::invalid_input("Invalid model dimensions"));
-        }
-        
-        println!("✅ Minimal model initialization complete");
-        Ok(())
-    }
-    
-    /// Simple text processing for basic functionality
-    pub fn process_text_simple(&mut self, text: &str) -> Result<SimpleTextResult> {
-        let start_time = std::time::Instant::now();
-        
-        // Basic text tokenization
-        let tokens = self.tokenizer.encode(text)?;
-        
-        // Simulate basic processing delay
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        
-        let latency = start_time.elapsed().as_millis() as f32;
-        
-        Ok(SimpleTextResult {
-            output_tokens: tokens,
-            latency_ms: latency,
-        })
-    }
-    
-    /// Simple image processing (simulated for Generation 1)
-    pub fn process_image_simple(&mut self, width: u32, height: u32) -> Result<SimpleImageResult> {
-        let start_time = std::time::Instant::now();
-        
-        // Simulate basic image processing
-        let features_len = (width * height / 16) as usize; // Simulated feature extraction
-        
-        // Simulate processing delay
-        std::thread::sleep(std::time::Duration::from_millis(15));
-        
-        let latency = start_time.elapsed().as_millis() as f32;
-        
-        Ok(SimpleImageResult {
-            feature_dims: vec![features_len / 4, 4], // Simulated 2D features
-            latency_ms: latency,
-        })
-    }
-    
-    /// Simple VLM inference combining text and image
-    pub fn infer_simple(&mut self, text: &str, image_dims: Option<(u32, u32)>) -> Result<SimpleVLMResult> {
-        let start_time = std::time::Instant::now();
-        
-        // Process text
-        let text_result = self.process_text_simple(text)?;
-        
-        // Process image if provided
-        let image_latency = if let Some((w, h)) = image_dims {
-            let img_result = self.process_image_simple(w, h)?;
-            img_result.latency_ms
-        } else {
-            0.0
-        };
-        
-        // Generate basic response (simulated)
-        let response = format!("Generated response for: '{}'", text);
-        
-        // Simulate fusion processing delay
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        
-        let total_latency = start_time.elapsed().as_millis() as f32;
-        
-        Ok(SimpleVLMResult {
-            text_output: response,
-            total_latency_ms: total_latency,
-            text_latency_ms: text_result.latency_ms,
-            image_latency_ms: image_latency,
-        })
-    }
-    
-    /// Get basic performance metrics
-    pub fn get_performance_metrics(&self) -> BasicPerformanceMetrics {
-        BasicPerformanceMetrics {
-            total_inferences: 1, // Simulated for Generation 1
-            avg_latency_ms: 45.0, // Simulated average
-            memory_usage_mb: 128.0, // Simulated memory usage
-        }
-    }
 }
 
 /// Calculate optimal memory pool size based on model configuration with generation-aware scaling
