@@ -131,6 +131,14 @@ pub enum TinyVlmError {
     /// Configuration errors (alternative name)
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
+    
+    /// Service degraded errors
+    #[error("Service degraded: {0}")]
+    ServiceDegraded(String),
+    
+    /// Service unavailable errors
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl TinyVlmError {
@@ -221,6 +229,16 @@ impl TinyVlmError {
     pub fn configuration_error(msg: impl Into<String>) -> Self {
         Self::ConfigurationError(msg.into())
     }
+    
+    /// Create a service degraded error
+    pub fn service_degraded(msg: impl Into<String>) -> Self {
+        Self::ServiceDegraded(msg.into())
+    }
+    
+    /// Create a service unavailable error
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self::ServiceUnavailable(msg.into())
+    }
 
     /// Create an error with enhanced context
     pub fn with_context(self, context: ErrorContext) -> Self {
@@ -266,6 +284,8 @@ impl TinyVlmError {
             Self::SecurityError(_) => ErrorSeverity::Critical,
             Self::NetworkError(_) => ErrorSeverity::Medium,
             Self::ConfigurationError(_) => ErrorSeverity::High,
+            Self::ServiceDegraded(_) => ErrorSeverity::Medium,
+            Self::ServiceUnavailable(_) => ErrorSeverity::High,
         }
     }
 
@@ -294,6 +314,8 @@ impl TinyVlmError {
             Self::SecurityError(_) => false,      // Security issues need fixing
             Self::NetworkError(_) => true,        // Network issues are often transient
             Self::ConfigurationError(_) => false, // Configuration issues need fixing
+            Self::ServiceDegraded(_) => true,     // Service may recover
+            Self::ServiceUnavailable(_) => true,  // Service may become available
         }
     }
 
@@ -394,6 +416,14 @@ impl TinyVlmError {
                 "Review configuration parameters".to_string(),
                 "Check configuration file syntax".to_string(),
                 "Use default configuration as fallback".to_string(),
+            ],
+            Self::ServiceDegraded(_) => vec![
+                "Wait for service to recover".to_string(),
+                "Use alternative service endpoint".to_string(),
+            ],
+            Self::ServiceUnavailable(_) => vec![
+                "Retry after delay".to_string(),
+                "Use fallback service".to_string(),
             ],
         }
     }
