@@ -54,7 +54,7 @@ pub enum ReliabilityState {
 }
 
 /// Error categories for advanced error handling
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ErrorCategory {
     Transient,
     Persistent,
@@ -133,7 +133,7 @@ impl EnhancedCircuitBreaker {
                     if last_failure.elapsed() > Duration::from_secs(self.config.circuit_breaker_timeout_seconds) {
                         self.state = CircuitBreakerState::HalfOpen;
                     } else {
-                        return Err(TinyVlmError::CircuitBreakerOpen);
+                        return Err(TinyVlmError::circuit_breaker_open("Circuit breaker is open"));
                     }
                 }
             }
@@ -278,6 +278,34 @@ impl AdvancedRetryPolicy {
         Err(last_error.unwrap_or_else(|| TinyVlmError::InternalError("Retry exhausted".to_string())))
     }
 
+    pub fn execute_with_retry_mut<F, T>(&self, operation: F) -> Result<T>
+    where
+        F: FnMut() -> Result<T>,
+    {
+        let mut operation = operation;
+        let mut last_error = None;
+        
+        for attempt in 0..self.config.retry_max_attempts {
+            match operation() {
+                Ok(result) => return Ok(result),
+                Err(error) => {
+                    if !self.is_retryable(&error) {
+                        return Err(error);
+                    }
+                    
+                    last_error = Some(error);
+                    
+                    if attempt < self.config.retry_max_attempts - 1 {
+                        let delay = self.calculate_delay(attempt);
+                        std::thread::sleep(delay);
+                    }
+                }
+            }
+        }
+        
+        Err(last_error.unwrap_or_else(|| TinyVlmError::InternalError("Retry exhausted".to_string())))
+    }
+
     fn is_retryable(&self, error: &TinyVlmError) -> bool {
         match error {
             TinyVlmError::NetworkError(_) => true,
@@ -347,13 +375,13 @@ impl GracefulDegradationManager {
             }
             ReliabilityState::Degraded => {
                 if self.config.enable_graceful_degradation {
-                    self.try_fallback(service, TinyVlmError::ServiceDegraded)
+                    self.try_fallback(service, TinyVlmError::service_degraded("Service degraded due to health check failure"))
                 } else {
                     primary_operation()
                 }
             }
             ReliabilityState::Critical | ReliabilityState::Offline => {
-                self.try_fallback(service, TinyVlmError::ServiceUnavailable)
+                self.try_fallback(service, TinyVlmError::service_unavailable("Service unavailable"))
             }
         }
     }
@@ -694,7 +722,7 @@ mod tests {
         let retry_policy = AdvancedRetryPolicy::new(config);
 
         let mut attempt_count = 0;
-        let result = retry_policy.execute_with_retry(|| {
+        let result = retry_policy.execute_with_retry_mut(&mut || {
             attempt_count += 1;
             if attempt_count < 3 {
                 Err(TinyVlmError::NetworkError("Temporary failure".to_string()))

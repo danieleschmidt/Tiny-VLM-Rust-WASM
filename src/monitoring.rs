@@ -113,6 +113,8 @@ impl MonitoringSystem {
                 TinyVlmError::Io(_) => "io",
                 #[cfg(feature = "std")]
                 TinyVlmError::SerializationError(_) => "serialization",
+                TinyVlmError::ServiceDegraded(_) => "service_degraded",
+                TinyVlmError::ServiceUnavailable(_) => "service_unavailable",
             };
             
             metrics.record_counter(&format!("errors_{}", error_type), 1.0, timestamp);

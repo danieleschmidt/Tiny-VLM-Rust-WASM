@@ -40,7 +40,7 @@ impl Default for BenchmarkConfig {
 }
 
 /// Precision modes for benchmarking
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum PrecisionMode {
     F32,
     F16,
@@ -49,7 +49,7 @@ pub enum PrecisionMode {
 }
 
 /// Hardware targets for benchmarking
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum HardwareTarget {
     CPU,
     SIMD,
@@ -594,10 +594,10 @@ impl BenchmarkOperation for ConvBenchmark {
 
     fn execute(&mut self, input: &Tensor, _precision: &PrecisionMode, _hardware: &HardwareTarget) -> Result<Tensor> {
         // Simulate convolution operation
-        let mut output_dims = input.shape().dims().to_vec();
+        let mut output_dims = input.shape().dims[..input.shape().ndim].to_vec();
         output_dims[output_dims.len() - 1] = 64; // Output channels
-        let output_shape = TensorShape::new(output_dims);
-        let mut output = crate::memory::Tensor::zeros(&output_shape);
+        let output_shape = TensorShape::new(&output_dims)?;
+        let mut output = crate::memory::Tensor::zeros(output_shape)?;
         
         // Simulate convolution computation
         for i in 0..output.data().len().min(1000) {
