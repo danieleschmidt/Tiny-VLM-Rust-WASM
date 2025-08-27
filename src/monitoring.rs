@@ -12,6 +12,36 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Configuration for monitoring system
+#[derive(Debug, Clone)]
+pub struct MonitoringConfig {
+    pub enable_metrics: bool,
+    pub enable_tracing: bool,
+    pub metric_retention_hours: u32,
+    pub alert_thresholds: HashMap<String, f64>,
+}
+
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self {
+            enable_metrics: true,
+            enable_tracing: true,
+            metric_retention_hours: 24,
+            alert_thresholds: HashMap::new(),
+        }
+    }
+}
+
+/// Monitoring report for system status
+#[derive(Debug, Clone)]
+pub struct MonitoringReport {
+    pub total_requests: u64,
+    pub success_rate: f64,
+    pub avg_latency_ms: f64,
+    pub error_rate: f64,
+    pub timestamp: u64,
+}
+
 #[cfg(feature = "std")]
 use std::fs::OpenOptions;
 #[cfg(feature = "std")]
@@ -30,8 +60,8 @@ pub struct MonitoringSystem {
 }
 
 impl MonitoringSystem {
-    /// Create a new monitoring system with production defaults
-    pub fn new() -> Self {
+    /// Create a new monitoring system with configuration
+    pub fn new(config: MonitoringConfig) -> Result<Self> {
         let mut system = Self {
             metrics: Arc::new(Mutex::new(MetricsStorage::new())),
             health_checks: Vec::new(),
@@ -44,7 +74,12 @@ impl MonitoringSystem {
         system.register_health_check(Box::new(PerformanceHealthCheck::new()));
         system.register_health_check(Box::new(ErrorRateHealthCheck::new()));
 
-        system
+        Ok(system)
+    }
+
+    /// Create a new monitoring system with default configuration
+    pub fn default() -> Result<Self> {
+        Self::new(MonitoringConfig::default())
     }
 
     /// Record an inference operation with detailed metrics
@@ -83,8 +118,106 @@ impl MonitoringSystem {
         }
     }
 
-    /// Record an error with classification
-    pub fn record_error(&self, error: &TinyVlmError, context: &str) {
+    /// Record a generic metric
+    pub fn record_metric(&self, name: &str, value: f64) -> Result<()> {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            let timestamp = current_timestamp();
+            metrics.record_gauge(name, value, timestamp);
+            Ok(())
+        } else {
+            Err(TinyVlmError::internal_error("Failed to acquire metrics lock"))
+        }
+    }
+
+    /// Record an error with category and message
+    pub fn record_error(&self, category: &str, message: &str) -> Result<()> {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            let timestamp = current_timestamp();
+            metrics.record_counter("errors_total", 1.0, timestamp);
+            metrics.record_counter(&format!("errors_{}", category), 1.0, timestamp);
+            
+            self.alerts.trigger_alert(Alert::new(
+                AlertSeverity::Warning,
+                &format!("{} Error", category),
+                format!("{}: {}", category, message)
+            ));
+            Ok(())
+        } else {
+            Err(TinyVlmError::internal_error("Failed to acquire metrics lock"))
+        }
+    }
+
+    /// Record a security event
+    pub fn record_security_event(&self, event_type: &str, details: &str) -> Result<()> {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            let timestamp = current_timestamp();
+            metrics.record_counter("security_events_total", 1.0, timestamp);
+            metrics.record_counter(&format!("security_event_{}", event_type), 1.0, timestamp);
+            
+            self.alerts.trigger_alert(Alert::new(
+                AlertSeverity::Critical,
+                "Security Event",
+                format!("{}: {}", event_type, details)
+            ));
+            Ok(())
+        } else {
+            Err(TinyVlmError::internal_error("Failed to acquire metrics lock"))
+        }
+    }
+
+    /// Increment a counter metric
+    pub fn increment_counter(&self, name: &str) -> Result<()> {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            let timestamp = current_timestamp();
+            metrics.record_counter(name, 1.0, timestamp);
+            Ok(())
+        } else {
+            Err(TinyVlmError::internal_error("Failed to acquire metrics lock"))
+        }
+    }
+
+    /// Generate a monitoring report
+    pub fn generate_report(&self) -> Result<MonitoringReport> {
+        if let Ok(metrics) = self.metrics.lock() {
+            let total_requests = metrics.counters.get("inference_total").unwrap_or(&0.0);
+            let total_errors = metrics.counters.get("errors_total").unwrap_or(&0.0);
+            let success_rate = if *total_requests > 0.0 {
+                (*total_requests - *total_errors) / *total_requests
+            } else {
+                1.0
+            };
+            
+            // Calculate average latency from histogram
+            let avg_latency_ms = if let Some(durations) = metrics.histograms.get("inference_duration_ms") {
+                if !durations.is_empty() {
+                    durations.iter().sum::<f64>() / durations.len() as f64
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+            
+            let error_rate = if *total_requests > 0.0 {
+                *total_errors / *total_requests
+            } else {
+                0.0
+            };
+            
+            Ok(MonitoringReport {
+                total_requests: *total_requests as u64,
+                success_rate,
+                avg_latency_ms,
+                error_rate,
+                timestamp: current_timestamp(),
+            })
+        } else {
+            Err(TinyVlmError::internal_error("Failed to acquire metrics lock"))
+        }
+    }
+
+    /// Record an error with classification (legacy method)
+    pub fn record_error_with_classification(&self, error: &TinyVlmError, context: &str) {
         if let Ok(mut metrics) = self.metrics.lock() {
             let timestamp = current_timestamp();
             

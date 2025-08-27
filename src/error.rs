@@ -177,6 +177,16 @@ impl TinyVlmError {
         Self::Config(msg.into())
     }
 
+    /// Create an invalid configuration error
+    pub fn invalid_config(msg: impl Into<String>) -> Self {
+        Self::Config(msg.into())
+    }
+
+    /// Create a deployment error
+    pub fn deployment(msg: impl Into<String>) -> Self {
+        Self::InternalError(format!("Deployment error: {}", msg.into()))
+    }
+
     /// Create a SIMD error
     pub fn simd(msg: impl Into<String>) -> Self {
         Self::Simd(msg.into())

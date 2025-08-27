@@ -27,6 +27,7 @@ impl Default for SimpleVLMConfig {
 }
 
 /// Simple Vision-Language Model for Generation 1
+#[derive(Clone)]
 pub struct SimpleVLM {
     config: SimpleVLMConfig,
     initialized: bool,

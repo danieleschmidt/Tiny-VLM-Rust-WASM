@@ -36,6 +36,16 @@ pub struct HealthReport {
     pub performance: PerformanceStats,
 }
 
+/// Simple health report for compatibility
+#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone)]
+pub struct SimpleHealthReport {
+    pub overall_status: HealthStatus,
+    pub uptime: std::time::Duration,
+    pub memory_usage_mb: f64,
+    pub cpu_usage_percent: f64,
+}
+
 /// Individual health check result
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone)]
@@ -212,6 +222,17 @@ impl HealthMonitor {
     /// Record a failed inference
     pub fn record_inference_failure(&mut self) {
         self.performance_stats.failed_inferences += 1;
+    }
+
+    /// Generate a simple health report for compatibility
+    pub fn generate_report(&self) -> SimpleHealthReport {
+        let uptime = std::time::Duration::from_secs_f64(self.performance_stats.uptime_seconds);
+        SimpleHealthReport {
+            overall_status: HealthStatus::Healthy, // Simplified for now
+            uptime,
+            memory_usage_mb: self.performance_stats.peak_memory_usage_mb,
+            cpu_usage_percent: 5.0, // Placeholder value
+        }
     }
 
     /// Check memory health

@@ -20,12 +20,16 @@ pub struct AdvancedScalingConfig {
     pub enable_workload_prediction: bool,
     pub min_instances: usize,
     pub max_instances: usize,
+    pub target_cpu_percent: f64,
+    pub target_latency_ms: f64,
     pub target_cpu_utilization: f64,
     pub target_memory_utilization: f64,
     pub scale_up_threshold: f64,
     pub scale_down_threshold: f64,
     pub scale_up_cooldown_seconds: u64,
     pub scale_down_cooldown_seconds: u64,
+    pub batch_size_auto_tuning: bool,
+    pub predictive_scaling: bool,
     pub batch_size_min: usize,
     pub batch_size_max: usize,
     pub adaptive_batch_window_seconds: u64,
@@ -44,12 +48,16 @@ impl Default for AdvancedScalingConfig {
             enable_workload_prediction: true,
             min_instances: 1,
             max_instances: 10,
+            target_cpu_percent: 70.0,
+            target_latency_ms: 100.0,
             target_cpu_utilization: 70.0,
             target_memory_utilization: 80.0,
             scale_up_threshold: 80.0,
             scale_down_threshold: 30.0,
             scale_up_cooldown_seconds: 300,
             scale_down_cooldown_seconds: 600,
+            batch_size_auto_tuning: true,
+            predictive_scaling: true,
             batch_size_min: 1,
             batch_size_max: 32,
             adaptive_batch_window_seconds: 60,
@@ -74,14 +82,15 @@ pub enum ScalingDecision {
 pub struct ResourceMetrics {
     pub cpu_utilization: f64,
     pub memory_utilization: f64,
+    pub avg_latency_ms: f64,
+    pub requests_per_second: f64,
+    pub error_rate: f64,
+    pub timestamp: std::time::SystemTime,
     pub network_utilization: f64,
     pub gpu_utilization: f64,
     pub queue_length: usize,
     pub active_connections: usize,
-    pub requests_per_second: f64,
     pub average_response_time_ms: f64,
-    pub error_rate: f64,
-    pub timestamp: u64,
 }
 
 impl Default for ResourceMetrics {
@@ -89,17 +98,15 @@ impl Default for ResourceMetrics {
         Self {
             cpu_utilization: 0.0,
             memory_utilization: 0.0,
+            avg_latency_ms: 0.0,
+            requests_per_second: 0.0,
+            error_rate: 0.0,
+            timestamp: std::time::SystemTime::now(),
             network_utilization: 0.0,
             gpu_utilization: 0.0,
             queue_length: 0,
             active_connections: 0,
-            requests_per_second: 0.0,
             average_response_time_ms: 0.0,
-            error_rate: 0.0,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
         }
     }
 }
@@ -889,14 +896,14 @@ pub struct AdvancedScalingManager {
 }
 
 impl AdvancedScalingManager {
-    pub fn new(config: AdvancedScalingConfig) -> Self {
-        Self {
+    pub fn new(config: AdvancedScalingConfig) -> Result<Self> {
+        Ok(Self {
             auto_scaler: AdvancedAutoScaler::new(config.clone()),
             batch_processor: AdaptiveBatchProcessor::new(config.clone()),
             smart_cache: SmartCache::new(config.clone()),
             is_running: AtomicBool::new(false),
             config,
-        }
+        })
     }
 
     /// Start the scaling manager
@@ -951,6 +958,29 @@ impl AdvancedScalingManager {
     pub fn cache_get(&self, key: &str) -> Option<Vec<u8>> {
         self.smart_cache.get(key)
     }
+
+    /// Evaluate scaling decision based on metrics
+    pub fn evaluate_scaling_decision(&mut self, metrics: &ResourceMetrics) -> Result<ScalingDecision> {
+        self.auto_scaler.evaluate_scaling(metrics)
+    }
+
+    /// Get efficiency statistics for reporting
+    pub fn get_efficiency_stats(&self) -> Result<ScalingEfficiencyStats> {
+        let scaling_metrics = self.auto_scaler.get_scaling_metrics()?;
+        let cache_stats = self.smart_cache.get_cache_statistics();
+
+        Ok(ScalingEfficiencyStats {
+            current_instances: scaling_metrics.current_instances,
+            scale_up_events: scaling_metrics.scaling_events_count / 2, // Simplified
+            scale_down_events: scaling_metrics.scaling_events_count / 2, // Simplified
+            efficiency_score: if scaling_metrics.average_cpu_utilization > 0.0 {
+                1.0 - (scaling_metrics.average_cpu_utilization - self.config.target_cpu_percent / 100.0).abs()
+            } else {
+                0.8
+            }.max(0.0).min(1.0),
+            avg_resource_utilization: scaling_metrics.average_cpu_utilization,
+        })
+    }
 }
 
 /// Comprehensive scaling status
@@ -961,6 +991,16 @@ pub struct AdvancedScalingStatus {
     pub optimal_batch_size: usize,
     pub is_running: bool,
     pub timestamp: u64,
+}
+
+/// Scaling efficiency statistics
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScalingEfficiencyStats {
+    pub current_instances: usize,
+    pub scale_up_events: u64,
+    pub scale_down_events: u64,
+    pub efficiency_score: f64,
+    pub avg_resource_utilization: f64,
 }
 
 #[cfg(test)]

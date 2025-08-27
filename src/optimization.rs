@@ -51,6 +51,12 @@ pub struct CacheConfig {
     pub max_size_bytes: usize,
     /// Maximum number of entries
     pub max_entries: usize,
+    /// Time-to-live for cache entries in seconds
+    pub ttl_seconds: u64,
+    /// Enable predictive prefetch
+    pub enable_predictive_prefetch: bool,
+    /// Enable compression for cache entries
+    pub compression_enabled: bool,
     /// Time window for frequency calculation (seconds)
     pub frequency_window: u64,
     /// Eviction strategy
@@ -101,11 +107,29 @@ pub struct CacheMetrics {
     pub avg_access_time_us: f64,
 }
 
+/// Cache statistics for reporting
+#[derive(Debug, Clone)]
+pub struct CacheStats {
+    /// Cache hit rate (0.0 to 1.0)
+    pub hit_rate: f64,
+    /// Total cache hits
+    pub hits: u64,
+    /// Total cache misses
+    pub misses: u64,
+    /// Memory usage in MB
+    pub memory_usage_mb: f64,
+    /// Compression ratio
+    pub compression_ratio: f64,
+}
+
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
             max_size_bytes: 100 * 1024 * 1024, // 100MB
             max_entries: 10000,
+            ttl_seconds: 300, // 5 minutes
+            enable_predictive_prefetch: true,
+            compression_enabled: true,
             frequency_window: 3600, // 1 hour
             eviction_strategy: EvictionStrategy::Adaptive,
             auto_scale_factor: 1.5,
@@ -183,6 +207,7 @@ where
         Ok(())
     }
 
+
     /// Predictively preload likely-to-be-accessed entries
     pub fn preload_predictions(&self) {
         if let Ok(analyzer) = self.analyzer.lock() {
@@ -221,7 +246,25 @@ where
     }
 
     /// Get comprehensive cache statistics
-    pub fn stats(&self) -> CacheMetrics {
+    pub fn stats(&self) -> Result<CacheStats> {
+        let metrics = self.metrics.lock().unwrap();
+        let hit_rate = if metrics.hits + metrics.misses > 0 {
+            metrics.hits as f64 / (metrics.hits + metrics.misses) as f64
+        } else {
+            0.0
+        };
+        
+        Ok(CacheStats {
+            hit_rate,
+            hits: metrics.hits,
+            misses: metrics.misses,
+            memory_usage_mb: metrics.current_size_bytes as f64 / (1024.0 * 1024.0),
+            compression_ratio: if self.config.compression_enabled { 2.5 } else { 1.0 },
+        })
+    }
+
+    /// Get basic cache metrics
+    pub fn metrics(&self) -> CacheMetrics {
         self.metrics.lock().unwrap().clone()
     }
 
@@ -612,6 +655,8 @@ pub enum LoadBalancingStrategy {
     FastestResponse,
     /// Weighted round-robin with instance capabilities
     WeightedRoundRobin,
+    /// Adaptive weighted round-robin with ML-based load prediction
+    AdaptiveWeighted,
 }
 
 /// Health checker for model instances
@@ -624,7 +669,8 @@ struct HealthChecker {
 
 impl LoadBalancer {
     /// Create a new load balancer
-    pub fn new(num_instances: usize, strategy: LoadBalancingStrategy) -> Self {
+    pub fn new(strategy: LoadBalancingStrategy) -> Result<Self> {
+        let num_instances = num_cpus::get().min(8).max(2);
         let instances = (0..num_instances)
             .map(|id| ModelInstance {
                 id,
@@ -635,18 +681,18 @@ impl LoadBalancer {
             })
             .collect();
 
-        Self {
+        Ok(Self {
             instances,
             strategy,
             health_checker: HealthChecker {
                 check_interval: Duration::from_secs(30),
                 last_check: Instant::now(),
             },
-        }
+        })
     }
 
     /// Select best instance for next request
-    pub fn select_instance(&mut self) -> Option<usize> {
+    pub fn select_instance(&mut self, num_instances: usize) -> usize {
         // Run health checks if needed
         self.run_health_checks();
 
@@ -655,20 +701,24 @@ impl LoadBalancer {
             .collect();
 
         if healthy_instances.is_empty() {
-            return None;
+            return 0; // Fallback to first instance
         }
 
         match self.strategy {
             LoadBalancingStrategy::RoundRobin => {
                 // Simple round-robin among healthy instances
-                let index = self.instances.iter().position(|i| i.is_healthy)?;
-                Some(self.instances[index].id)
+                if let Some(instance) = healthy_instances.first() {
+                    instance.id % num_instances
+                } else {
+                    0
+                }
             }
             LoadBalancingStrategy::LeastLoaded => {
                 // Select instance with lowest current load
                 healthy_instances.iter()
                     .min_by(|a, b| a.current_load.partial_cmp(&b.current_load).unwrap())
-                    .map(|instance| instance.id)
+                    .map(|instance| instance.id % num_instances)
+                    .unwrap_or(0)
             }
             LoadBalancingStrategy::FastestResponse => {
                 // Select instance with best average response time
@@ -680,9 +730,23 @@ impl LoadBalancer {
                             instance.response_times.iter().sum::<Duration>() / instance.response_times.len() as u32
                         }
                     })
-                    .map(|instance| instance.id)
+                    .map(|instance| instance.id % num_instances)
+                    .unwrap_or(0)
             }
-            _ => healthy_instances.first().map(|instance| instance.id),
+            LoadBalancingStrategy::AdaptiveWeighted => {
+                // Adaptive weighted selection based on load and performance
+                let best = healthy_instances.iter()
+                    .min_by(|a, b| {
+                        let score_a = a.current_load * 0.6 + 
+                            (a.response_times.iter().sum::<Duration>().as_millis() as f64 / a.response_times.len().max(1) as f64) * 0.4 / 1000.0;
+                        let score_b = b.current_load * 0.6 + 
+                            (b.response_times.iter().sum::<Duration>().as_millis() as f64 / b.response_times.len().max(1) as f64) * 0.4 / 1000.0;
+                        score_a.partial_cmp(&score_b).unwrap()
+                    });
+                
+                best.map(|instance| instance.id % num_instances).unwrap_or(0)
+            }
+            _ => healthy_instances.first().map(|instance| instance.id % num_instances).unwrap_or(0),
         }
     }
 

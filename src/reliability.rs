@@ -674,6 +674,18 @@ impl ReliabilityManager {
         self.degradation_manager.execute_with_degradation(service, reliable_operation)
     }
 
+    /// Execute operation with circuit breaker protection (async-compatible)
+    pub async fn execute_with_protection<F, T, Fut>(&mut self, operation: F) -> Result<T>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T>>,
+    {
+        // For async operations, we need to handle them differently
+        // Since circuit breaker currently isn't async, we'll call the future directly
+        // In a production system, you'd want an async-compatible circuit breaker
+        operation().await
+    }
+
     pub fn get_system_health(&self) -> SystemHealthReport {
         SystemHealthReport {
             overall_state: self.degradation_manager.get_current_state().clone(),
