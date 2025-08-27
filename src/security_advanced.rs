@@ -201,7 +201,7 @@ impl AdvancedSecurityManager {
         // Model poisoning detection
         if self.config.enable_model_poisoning_detection {
             if let Some(poisoning_result) = self.detect_model_poisoning(request)? {
-                threat_score += poisoning_result.confidence * 0.25;
+                threat_score += (poisoning_result.confidence * 0.25) as f32;
                 events.push(SecurityEvent::ModelPoisoningAttempt {
                     request_id: request.request_id.clone(),
                     poison_indicators: poisoning_result.indicators,
@@ -220,7 +220,7 @@ impl AdvancedSecurityManager {
             _ => ThreatLevel::None,
         };
 
-        let should_block = threat_score >= self.config.threat_score_threshold;
+        let should_block = threat_score >= self.config.threat_score_threshold as f32;
         let quarantine_until = if should_block && threat_score >= 0.8 {
             self.quarantined_clients.insert(request.client_id.clone(), Instant::now());
             Some("quarantine_activated".to_string())
@@ -229,11 +229,11 @@ impl AdvancedSecurityManager {
         };
 
         // Update threat database
-        self.threat_database.update_threat_intel(&request.client_id, threat_score);
+        self.threat_database.update_threat_intel(&request.client_id, threat_score.into());
 
         Ok(SecurityAnalysis {
             threat_level,
-            threat_score,
+            threat_score: threat_score.into(),
             events,
             recommendations,
             should_block,
@@ -421,7 +421,7 @@ impl AnomalyDetector {
         // Character distribution analysis
         let non_ascii_ratio = request.input_text.chars()
             .filter(|c| !c.is_ascii())
-            .count() as f64 / text_length;
+            .count() as f64 / text_length as f64;
         
         if non_ascii_ratio > 0.3 {
             anomalous_features.push("High non-ASCII character ratio".to_string());

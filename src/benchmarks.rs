@@ -154,21 +154,25 @@ impl BenchmarkSuite {
             .filter(|&hw| self.is_hardware_available(hw))
             .collect();
 
-        for (op_name, operation) in &mut self.operations {
+        let operation_names: Vec<String> = self.operations.keys().cloned().collect();
+        
+        for op_name in operation_names {
             println!("🔧 Benchmarking operation: {}", op_name);
             
             for input_size in &config.input_sizes {
                 for &batch_size in &config.batch_sizes {
                     for precision in &config.precision_modes {
                         for &hardware in &available_hardware {
-                            let result = self.benchmark_operation(
+                            let operation = self.operations.get_mut(&op_name).unwrap();
+                            let result = Self::benchmark_single_operation(
                                 operation.as_mut(),
-                                op_name,
+                                &op_name,
                                 input_size,
                                 batch_size,
                                 precision,
                                 hardware,
                                 &config,
+                                &self.system_info,
                             )?;
                             results.push(result);
                         }
@@ -193,8 +197,7 @@ impl BenchmarkSuite {
         })
     }
 
-    fn benchmark_operation(
-        &self,
+    fn benchmark_single_operation(
         operation: &mut dyn BenchmarkOperation,
         name: &str,
         input_size: &[usize],
@@ -202,6 +205,7 @@ impl BenchmarkSuite {
         precision: &PrecisionMode,
         hardware: &HardwareTarget,
         config: &BenchmarkConfig,
+        system_info: &SystemInfo,
     ) -> Result<BenchmarkResult> {
         // Create input tensor
         let mut shape = input_size.to_vec();
@@ -219,8 +223,8 @@ impl BenchmarkSuite {
         let mut energy_consumption = None;
 
         for i in 0..config.measurement_iterations {
-            let start_memory = self.get_memory_usage();
-            let start_energy = self.get_energy_consumption();
+            let start_memory = Self::get_memory_usage_static();
+            let start_energy = Self::get_energy_consumption_static();
             let start_time = Instant::now();
             
             let _result = operation.execute(&input, precision, hardware)?;
@@ -228,8 +232,8 @@ impl BenchmarkSuite {
             let latency = start_time.elapsed();
             latencies.push(latency.as_millis() as f64);
             
-            let end_memory = self.get_memory_usage();
-            let end_energy = self.get_energy_consumption();
+            let end_memory = Self::get_memory_usage_static();
+            let end_energy = Self::get_energy_consumption_static();
             
             memory_usage += (end_memory - start_memory).max(0.0);
             
@@ -244,7 +248,7 @@ impl BenchmarkSuite {
         }
         println!();
 
-        let latency_stats = self.calculate_latency_stats(&latencies);
+        let latency_stats = Self::calculate_latency_stats_static(&latencies);
         let throughput = (batch_size as f64 * config.measurement_iterations as f64) / 
             (latency_stats.mean_ms * config.measurement_iterations as f64 / 1000.0);
 
@@ -516,6 +520,48 @@ impl BenchmarkSuite {
         // Placeholder - would implement actual energy monitoring on supported platforms
         None
     }
+
+    // Static versions for use in benchmark_single_operation
+    fn get_memory_usage_static() -> f64 {
+        // Placeholder - would implement actual memory monitoring
+        100.0
+    }
+
+    fn get_energy_consumption_static() -> Option<f64> {
+        // Placeholder - would implement actual energy monitoring on supported platforms
+        None
+    }
+
+    fn calculate_latency_stats_static(latencies: &[f64]) -> LatencyStats {
+        let mut sorted = latencies.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        
+        let len = sorted.len();
+        let mean = sorted.iter().sum::<f64>() / len as f64;
+        let median = if len % 2 == 0 {
+            (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
+        } else {
+            sorted[len / 2]
+        };
+        
+        let p95_idx = ((len as f64 * 0.95) as usize).min(len - 1);
+        let p99_idx = ((len as f64 * 0.99) as usize).min(len - 1);
+        
+        let variance = sorted.iter()
+            .map(|x| (x - mean).powi(2))
+            .sum::<f64>() / len as f64;
+        let std_dev = variance.sqrt();
+        
+        LatencyStats {
+            mean_ms: mean,
+            median_ms: median,
+            p95_ms: sorted[p95_idx],
+            p99_ms: sorted[p99_idx],
+            std_dev_ms: std_dev,
+            min_ms: sorted[0],
+            max_ms: sorted[len - 1],
+        }
+    }
 }
 
 impl Default for BenchmarkSuite {
@@ -595,7 +641,8 @@ impl BenchmarkOperation for ConvBenchmark {
     fn execute(&mut self, input: &Tensor, _precision: &PrecisionMode, _hardware: &HardwareTarget) -> Result<Tensor> {
         // Simulate convolution operation
         let mut output_dims = input.shape().dims[..input.shape().ndim].to_vec();
-        output_dims[output_dims.len() - 1] = 64; // Output channels
+        let last_idx = output_dims.len() - 1;
+        output_dims[last_idx] = 64; // Output channels
         let output_shape = TensorShape::new(&output_dims)?;
         let mut output = crate::memory::Tensor::zeros(output_shape)?;
         
