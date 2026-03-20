@@ -1,81 +1,137 @@
-//! Tiny-VLM-Rust-WASM: Ultra-efficient Vision-Language Model
-//!
-//! A high-performance Vision-Language Model implementation optimized for mobile deployment
-//! through WebAssembly compilation and SIMD optimization.
+pub mod patch_embedder;
+pub mod attention;
+pub mod transformer;
+pub mod encoder;
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![deny(unsafe_op_in_unsafe_fn)]
-#![warn(missing_docs, rust_2018_idioms)]
-
-pub mod benchmarks;
-pub mod data;
-pub mod deployment;
-pub mod error;
-pub mod health;
-pub mod integration_simple;
-pub mod logging;
-pub mod memory;
-pub mod models;
-pub mod monitoring;
-pub mod monitoring_advanced;
-pub mod optimization;
-pub mod recovery;
-pub mod reliability;
-pub mod research;
-pub mod scaling;
-pub mod scaling_advanced;
-pub mod security;
-pub mod security_advanced;
-pub mod simd;
-pub mod simple_vlm;
-pub mod text;
-pub mod threat_intelligence;
-pub mod validation;
-pub mod vision;
-
-#[cfg(feature = "wasm")]
-pub mod wasm;
-#[cfg(feature = "gpu")]
-pub mod gpu;
-
-pub use error::{Result, TinyVlmError};
-pub use models::{FastVLM, InferenceConfig, ModelConfig, SimpleTextResult, SimpleImageResult, SimpleVLMResult, BasicPerformanceMetrics};
-pub use memory::{MemoryPool, TensorShape};
-
-/// Default tensor type using f32 precision
-pub type Tensor = memory::Tensor<f32>;
-
-/// Re-export commonly used types
-pub mod prelude {
-    pub use crate::{FastVLM, InferenceConfig, ModelConfig, Result, TinyVlmError, Tensor};
-    pub use crate::simple_vlm::{SimpleVLM, SimpleVLMConfig, SimplePerformanceMetrics};
-    pub use crate::benchmarks::{BenchmarkSuite, BenchmarkConfig, BenchmarkOperation, BenchmarkResult, BenchmarkReport};
-    pub use crate::data::{DataLoader, DataSample, VisionLanguageDataset, DatasetConfig};
-    pub use crate::health::{HealthMonitor, HealthReport, SimpleHealthReport};
-    pub use crate::integration_simple::{SimpleVLMService, SimpleInferenceRequest, SimpleInferenceResponse, SimpleServiceConfig};
-    pub use crate::logging::{LogConfig, LogFormat, PerformanceTimer};
-    pub use crate::memory::{MemoryPool, TensorShape};
-    pub use crate::monitoring::{MonitoringSystem, MonitoringConfig, MonitoringReport};
-    pub use crate::monitoring_advanced::{AdvancedMonitoringSystem, AdvancedMonitoringConfig, AdvancedMonitoringReport, Metric, MetricType, Span, Alert, HealthCheck, HealthStatus};
-    pub use crate::optimization::{AdaptiveCache, CacheConfig, CacheStats, LoadBalancer, LoadBalancingStrategy, EvictionStrategy};
-    pub use crate::recovery::{CircuitBreaker, RecoveryManager, RecoveryStats, RetryPolicy};
-    pub use crate::reliability::{ReliabilityManager, ReliabilityConfig, ReliabilityState, EnhancedError, ErrorCategory};
-    pub use crate::research::{ResearchFramework, ExperimentConfig, ResearchAlgorithm, AlgorithmResult, ExperimentResults, ExportFormat};
-    pub use crate::scaling_advanced::{AdvancedScalingManager, AdvancedScalingConfig, AdvancedAutoScaler, SmartCache, ResourceMetrics, ScalingDecision, ScalingEfficiencyStats};
-    pub use crate::security_advanced::{AdvancedSecurityManager, AdvancedSecurityConfig, SecurityAnalysis, ThreatLevel, SecurityEvent};
-    pub use crate::text::{Tokenizer, TokenizerConfig};
-    pub use crate::validation::{ValidationResult, validate_image_data, validate_text_input};
-    pub use crate::vision::{ImageProcessor, VisionEncoder};
-}
+pub use patch_embedder::PatchEmbedder;
+pub use attention::MultiHeadAttention;
+pub use transformer::TransformerBlock;
+pub use encoder::TinyVLMEncoder;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // --- PatchEmbedder tests ---
+
     #[test]
-    fn test_basic_functionality() {
-        // Basic smoke test to ensure core modules compile
-        let config = ModelConfig::default();
-        assert!(config.vision_dim > 0);
+    fn test_patch_embedder_new() {
+        let pe = PatchEmbedder::new(16, 256, 224);
+        assert_eq!(pe.patch_dim(), 16 * 16 * 3);
+    }
+
+    #[test]
+    fn test_patch_embedder_num_patches() {
+        let pe = PatchEmbedder::new(16, 256, 224);
+        // 224 / 16 = 14, 14 * 14 = 196
+        assert_eq!(pe.num_patches(), 196);
+    }
+
+    #[test]
+    fn test_patch_embedder_patch_dim() {
+        let pe = PatchEmbedder::new(16, 256, 224);
+        // 16 * 16 * 3 = 768
+        assert_eq!(pe.patch_dim(), 768);
+    }
+
+    #[test]
+    fn test_patch_embedder_forward_shape() {
+        // Use small image for speed: 32x32, patch_size=16 => 2x2=4 patches
+        let embed_dim = 64;
+        let pe = PatchEmbedder::new(16, embed_dim, 32);
+        let image = vec![0.5f32; 32 * 32 * 3];
+        let out = pe.forward(&image);
+        assert_eq!(out.len(), 4);
+        for row in &out {
+            assert_eq!(row.len(), embed_dim);
+        }
+    }
+
+    // --- MultiHeadAttention tests ---
+
+    #[test]
+    fn test_attention_new() {
+        let mha = MultiHeadAttention::new(64, 4);
+        // Just checks it constructs without panic
+        let _ = mha;
+    }
+
+    #[test]
+    fn test_attention_forward_shape() {
+        let embed_dim = 64;
+        let num_heads = 4;
+        let seq_len = 4;
+        let mha = MultiHeadAttention::new(embed_dim, num_heads);
+        let x: Vec<Vec<f32>> = (0..seq_len)
+            .map(|_| vec![0.1f32; embed_dim])
+            .collect();
+        let out = mha.forward(&x);
+        assert_eq!(out.len(), seq_len);
+        for row in &out {
+            assert_eq!(row.len(), embed_dim);
+        }
+    }
+
+    // --- TransformerBlock tests ---
+
+    #[test]
+    fn test_transformer_block_new() {
+        let tb = TransformerBlock::new(64, 4);
+        let _ = tb;
+    }
+
+    #[test]
+    fn test_transformer_block_forward_shape() {
+        let embed_dim = 64;
+        let num_heads = 4;
+        let seq_len = 4;
+        let tb = TransformerBlock::new(embed_dim, num_heads);
+        let x: Vec<Vec<f32>> = (0..seq_len)
+            .map(|_| vec![0.1f32; embed_dim])
+            .collect();
+        let out = tb.forward(&x);
+        assert_eq!(out.len(), seq_len);
+        for row in &out {
+            assert_eq!(row.len(), embed_dim);
+        }
+    }
+
+    // --- TinyVLMEncoder tests ---
+
+    #[test]
+    fn test_encoder_new() {
+        let enc = TinyVLMEncoder::new(64, 4, 4);
+        let _ = enc;
+    }
+
+    #[test]
+    fn test_encoder_forward_shape() {
+        let embed_dim = 64;
+        // Use image_size=32, patch_size=16 => 2x2=4 patches
+        let enc = TinyVLMEncoder::with_image_size(embed_dim, 4, 4, 32);
+        let image = vec![0.1f32; 32 * 32 * 3];
+        let out = enc.forward(&image);
+        assert_eq!(out.len(), 4);
+        for row in &out {
+            assert_eq!(row.len(), embed_dim);
+        }
+    }
+
+    #[test]
+    fn test_encoder_param_count_positive() {
+        let enc = TinyVLMEncoder::new(64, 4, 4);
+        assert!(enc.param_count() > 0);
+    }
+
+    #[test]
+    fn test_encoder_num_blocks() {
+        let enc = TinyVLMEncoder::new(64, 4, 4);
+        assert_eq!(enc.num_blocks(), 4);
+    }
+
+    #[test]
+    fn test_encoder_embed_dim() {
+        let enc = TinyVLMEncoder::new(64, 4, 4);
+        assert_eq!(enc.embed_dim(), 64);
     }
 }
